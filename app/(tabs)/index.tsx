@@ -264,111 +264,84 @@ export default function HomeScreen() {
     return <ThemedView style={[styles.container, styles.center]} />;
   }
 
-  // 登录界面 - 现代化设计
   if (!token) {
     return (
-      <View style={styles.loginContainer}>
-        <StatusBar barStyle="light-content" />
-        <LinearGradient
-          colors={[colors.primary[400], colors.primary[500], colors.primary[600]]}
-          style={styles.loginGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          {/* 装饰圆圈 */}
-          <View style={styles.decorCircle1} />
-          <View style={styles.decorCircle2} />
-          
-          <View style={[styles.loginCard, { marginTop: insets.top + 80 }]}>
-            {/* Logo区域 */}
-            <View style={styles.logoContainer}>
-              <View style={styles.logoCircle}>
-                <ThemedText style={styles.logoEmoji}>📮</ThemedText>
-              </View>
-              <ThemedText style={styles.loginTitle}>One Post A Day</ThemedText>
-              <ThemedText style={styles.loginSubtitle}>每天一个幸运儿，分享你的故事</ThemedText>
+      <View style={[styles.loginContainer, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" />
+
+        <View style={styles.loginInner}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoCircle}>
+              <ThemedText style={styles.logoEmoji}>📮</ThemedText>
             </View>
-
-            {/* 输入区域 */}
-            <View style={styles.inputContainer}>
-              <View style={styles.inputWrapper}>
-                <ThemedText style={styles.inputLabel}>手机号</ThemedText>
-                <TextInput
-                  placeholder="请输入11位手机号"
-                  placeholderTextColor={colors.neutral[400]}
-                  style={[styles.input, loginError && !code ? styles.inputError : null]}
-                  value={phone}
-                  onChangeText={(text) => {
-                    setPhone(text);
-                    setLoginError('');
-                  }}
-                  keyboardType="phone-pad"
-                  maxLength={11}
-                />
-              </View>
-
-              <View style={styles.inputWrapper}>
-                <ThemedText style={styles.inputLabel}>验证码</ThemedText>
-                <View style={styles.codeInputRow}>
-                  <TextInput
-                    placeholder="6位验证码"
-                    placeholderTextColor={colors.neutral[400]}
-                    style={[styles.input, styles.codeInput, loginError && code ? styles.inputError : null]}
-                    value={code}
-                    onChangeText={(text) => {
-                      setCode(text);
-                      setLoginError('');
-                    }}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                  />
-                  <TouchableOpacity 
-                    style={[
-                      styles.sendCodeButton,
-                      (countdown > 0 || sendingCode || !phone) && styles.sendCodeButtonDisabled
-                    ]} 
-                    onPress={requestOtp}
-                    disabled={countdown > 0 || sendingCode || !phone}
-                  >
-                    <ThemedText style={[
-                      styles.sendCodeText,
-                      (countdown > 0 || sendingCode || !phone) && styles.sendCodeTextDisabled
-                    ]}>
-                      {sendingCode ? '发送中...' : countdown > 0 ? `${countdown}秒` : '发送验证码'}
-                    </ThemedText>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {loginError ? (
-                <View style={styles.errorContainer}>
-                  <ThemedText style={styles.errorText}>⚠️ {loginError}</ThemedText>
-                </View>
-              ) : null}
-
-              <TouchableOpacity 
-                style={[styles.loginButton, loggingIn && styles.loginButtonDisabled]} 
-                onPress={verifyOtp}
-                disabled={loggingIn}
-              >
-                <LinearGradient
-                  colors={loggingIn ? [colors.neutral[300], colors.neutral[400]] : [colors.primary[500], colors.primary[600]]}
-                  style={styles.loginButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  <ThemedText style={styles.loginButtonText}>
-                    {loggingIn ? '登录中...' : '登录'}
-                  </ThemedText>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <ThemedText style={styles.loginHint}>
-                💡 开发模式：验证码统一为 123456
-              </ThemedText>
-            </View>
+            <ThemedText style={styles.loginTitle}>One Post A Day</ThemedText>
+            <ThemedText style={styles.loginSubtitle}>每天一个幸运儿，分享你的故事</ThemedText>
           </View>
-        </LinearGradient>
+
+          <View style={styles.inputContainer}>
+            <View style={styles.inputField}>
+              <TextInput
+                placeholder="请输入手机号"
+                placeholderTextColor={colors.neutral[400]}
+                style={styles.inputText}
+                value={phone}
+                onChangeText={(text) => { setPhone(text); setLoginError(''); }}
+                keyboardType="phone-pad"
+                maxLength={11}
+              />
+            </View>
+
+            <View style={[styles.inputField, loginError && code ? styles.inputFieldError : null]}>
+              <TextInput
+                placeholder="请输入验证码"
+                placeholderTextColor={colors.neutral[400]}
+                style={[styles.inputText, { flex: 1 }]}
+                value={code}
+                onChangeText={(text) => { setCode(text); setLoginError(''); }}
+                keyboardType="number-pad"
+                maxLength={6}
+              />
+              <View style={styles.inputDivider} />
+              <TouchableOpacity
+                onPress={requestOtp}
+                disabled={countdown > 0 || sendingCode || !phone}
+                style={styles.inlineSendBtn}
+              >
+                <ThemedText style={[
+                  styles.inlineSendText,
+                  (countdown > 0 || sendingCode || !phone) && styles.inlineSendTextDisabled
+                ]}>
+                  {sendingCode ? '发送中' : countdown > 0 ? `${countdown}s` : '发送验证码'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+
+            {loginError ? (
+              <ThemedText style={styles.errorText}>⚠️ {loginError}</ThemedText>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.loginButton, loggingIn && styles.loginButtonDisabled]}
+              onPress={verifyOtp}
+              disabled={loggingIn}
+            >
+              <LinearGradient
+                colors={loggingIn ? [colors.neutral[300], colors.neutral[400]] : [colors.primary[400], colors.primary[600]]}
+                style={styles.loginButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <ThemedText style={styles.loginButtonText}>
+                  {loggingIn ? '登录中...' : '登录'}
+                </ThemedText>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <ThemedText style={styles.loginHint}>
+              💡 开发模式：验证码统一为 123456
+            </ThemedText>
+          </View>
+        </View>
       </View>
     );
   }
@@ -665,128 +638,85 @@ const styles = StyleSheet.create({
   // 登录界面样式
   loginContainer: {
     flex: 1,
+    backgroundColor: colors.background.primary,
   },
-  loginGradient: {
+  loginInner: {
     flex: 1,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  decorCircle1: {
-    position: 'absolute',
-    top: -100,
-    right: -100,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  decorCircle2: {
-    position: 'absolute',
-    bottom: -50,
-    left: -50,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  loginCard: {
-    width: '90%',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: borderRadius['3xl'],
-    padding: spacing[5],
-    ...shadows.xl,
+    paddingHorizontal: spacing[6],
+    justifyContent: 'center',
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: spacing[8],
+    marginBottom: spacing[10],
   },
   logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.primary[50],
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing[4],
   },
   logoEmoji: {
-    fontSize: 40,
+    fontSize: 36,
   },
   loginTitle: {
-    fontSize: typography.fontSize['3xl'],
+    fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.neutral[900],
-    marginBottom: spacing[2],
+    marginBottom: spacing[1],
   },
   loginSubtitle: {
-    fontSize: typography.fontSize.base,
-    color: colors.neutral[600],
+    fontSize: typography.fontSize.sm,
+    color: colors.neutral[500],
   },
   inputContainer: {
-    gap: spacing[5],
+    gap: spacing[4],
   },
-  inputWrapper: {
-    gap: spacing[2],
-  },
-  inputLabel: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
-    color: colors.neutral[700],
-  },
-  input: {
-    backgroundColor: colors.background.primary,
+  inputField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.neutral[50],
     borderRadius: borderRadius.lg,
-    padding: spacing[4],
-    fontSize: typography.fontSize.base,
     borderWidth: 1,
     borderColor: colors.neutral[200],
+    paddingHorizontal: spacing[4],
+    height: 52,
   },
-  inputError: {
+  inputFieldError: {
     borderColor: colors.error,
     backgroundColor: '#fff5f5',
   },
-  codeInputRow: {
-    flexDirection: 'row',
-    gap: spacing[2],
+  inputText: {
+    fontSize: typography.fontSize.base,
+    color: colors.neutral[900],
   },
-  codeInput: {
-    flex: 1,
+  inputDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: colors.neutral[200],
+    marginHorizontal: spacing[3],
   },
-  sendCodeButton: {
-    backgroundColor: colors.primary[50],
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-    justifyContent: 'center',
-    flexShrink: 0,
+  inlineSendBtn: {
+    paddingVertical: spacing[1],
   },
-  sendCodeButtonDisabled: {
-    backgroundColor: colors.neutral[100],
-  },
-  sendCodeText: {
+  inlineSendText: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semibold,
-    color: colors.primary[600],
-    textAlign: 'center',
+    color: colors.primary[500],
   },
-  sendCodeTextDisabled: {
+  inlineSendTextDisabled: {
     color: colors.neutral[400],
-  },
-  errorContainer: {
-    backgroundColor: '#fff5f5',
-    borderRadius: borderRadius.md,
-    padding: spacing[3],
-    borderLeftWidth: 3,
-    borderLeftColor: colors.error,
   },
   errorText: {
     fontSize: typography.fontSize.sm,
     color: colors.error,
   },
   loginButton: {
-    marginTop: spacing[4],
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
+    marginTop: spacing[2],
   },
   loginButtonDisabled: {
     opacity: 0.6,
@@ -796,14 +726,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loginButtonText: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.bold,
     color: '#ffffff',
   },
   loginHint: {
     textAlign: 'center',
     fontSize: typography.fontSize.xs,
-    color: colors.neutral[500],
+    color: colors.neutral[400],
   },
 
   // 发帖表单样式
