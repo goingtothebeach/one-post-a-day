@@ -17,6 +17,7 @@ ALIYUN_ACCESS_KEY_ID = os.getenv("ALIYUN_ACCESS_KEY_ID", "")
 ALIYUN_ACCESS_KEY_SECRET = os.getenv("ALIYUN_ACCESS_KEY_SECRET", "")
 ALIYUN_SMS_SCHEME = os.getenv("ALIYUN_SMS_SCHEME", "")
 ALIYUN_SMS_SIGN_NAME = os.getenv("ALIYUN_SMS_SIGN_NAME", "")
+ALIYUN_SMS_TEMPLATE_CODE = os.getenv("ALIYUN_SMS_TEMPLATE_CODE", "")
 
 # 频率限制存储: {phone: sent_at}
 RATE_LIMIT: dict[str, datetime] = {}
@@ -41,6 +42,7 @@ def send_sms_verify_code(phone: str) -> bool:
         country_code="86",
         sign_name=ALIYUN_SMS_SIGN_NAME or None,
         scheme_name=ALIYUN_SMS_SCHEME or None,
+        sms_template_code=ALIYUN_SMS_TEMPLATE_CODE or None,
     )
     resp = client.send_sms_verify_code(req)
     return resp.body.code == "OK"
