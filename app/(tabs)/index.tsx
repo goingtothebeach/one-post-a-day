@@ -755,9 +755,10 @@ const styles = StyleSheet.create({
   sendCodeButton: {
     backgroundColor: colors.primary[50],
     borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing[4],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
     justifyContent: 'center',
-    minWidth: 100,
+    flexShrink: 0,
   },
   sendCodeButtonDisabled: {
     backgroundColor: colors.neutral[100],
