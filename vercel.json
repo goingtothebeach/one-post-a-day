@@ -2,10 +2,10 @@
   "version": 2,
   "buildCommand": "npx expo export -p web",
   "outputDirectory": "dist",
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/((?!_expo|assets|favicon.ico).*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
