@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 
-// 默认本机端口 4000；原生端需改为当前电脑局域网 IP
-const LAN_IP = process.env.EXPO_PUBLIC_API_HOST || '<YOUR_LAN_IP>';
+// 生产环境API地址（Railway部署）
+const PRODUCTION_API = 'https://one-post-a-day-production.up.railway.app';
 
-export const API_BASE = Platform.OS === 'web' ? 'http://localhost:4000' : `http://${LAN_IP}:4000`;
+// 开发环境API地址
+const DEV_API = 'http://localhost:4000';
+
+// 根据环境自动切换
+export const API_BASE = process.env.NODE_ENV === 'production' ? PRODUCTION_API : DEV_API;
