@@ -1,0 +1,43 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+from app.database import Base, engine
+from app import auth, lottery, post, profile, upload
+from app.scheduler import start_scheduler
+
+load_dotenv()
+
+Base.metadata.create_all(bind=engine)
+
+scheduler = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时执行
+    global scheduler
+    scheduler = start_scheduler()
+    yield
+    # 关闭时执行
+    if scheduler:
+        scheduler.shutdown()
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
+app.include_router(lottery.router)
+app.include_router(post.router)
+app.include_router(profile.router)
+app.include_router(upload.router)
+
+@app.get("/health")
+def health():
+    return {"ok": True}

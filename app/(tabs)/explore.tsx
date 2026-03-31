@@ -1,112 +1,506 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import { API_BASE } from '../config/api';
+import { useAuth } from '../context/AuthContext';
+import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMemo, useState, useEffect } from 'react';
+import { FlatList, StyleSheet, TouchableOpacity, View, StatusBar } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import dayjs from 'dayjs';
+import { DesignSystem } from '@/constants/design-system';
 
-export default function TabTwoScreen() {
+const { colors, spacing, borderRadius, shadows, typography } = DesignSystem;
+
+type LotteryStatus = {
+  lottery?: {
+    drawDate: string;
+    winnerUserId?: number | null;
+    status: string;
+  } | null;
+};
+
+type TicketUser = { id: number; phone: string; name?: string | null };
+
+type TicketItem = {
+  id: number;
+  user: TicketUser;
+};
+
+export default function ExploreScreen() {
+  const { token, user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const [status, setStatus] = useState<LotteryStatus | null>(null);
+  const [tickets, setTickets] = useState<TicketItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState('');
+
+  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  const loadStatus = async () => {
+    setLoading(true);
+    const res = await fetch(`${API_BASE}/lottery/today/status`);
+    const data = await res.json();
+    setStatus(data);
+    setLoading(false);
+  };
+
+  const loadTickets = async () => {
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/lottery/tickets`, { headers });
+    const data = await res.json();
+    setTickets(data.tickets || []);
+  };
+
+  const hasWon = useMemo(() => {
+    if (!status?.lottery) return false;
+    const drawDay = dayjs(status.lottery.drawDate).startOf('day');
+    const today = dayjs().startOf('day');
+    return drawDay.isSame(today) && status.lottery.winnerUserId === user?.id;
+  }, [status, user]);
+
+  const hasJoined = useMemo(() => {
+    if (!token || !tickets.length) return false;
+    return tickets.some(t => t.user.id === user?.id);
+  }, [tickets, user, token]);
+
+  const joinLottery = async () => {
+    if (!token) {
+      setError('请先登录后再报名');
+      return;
+    }
+    setError('');
+    setJoining(true);
+    const res = await fetch(`${API_BASE}/lottery/join`, { method: 'POST', headers });
+    if (res.status === 401) {
+      setError('登录已失效，请重新登录');
+      router.replace('/');
+    } else if (!res.ok) {
+      const data = await res.json();
+      setError(data.detail || '报名失败，请稍后再试');
+    } else {
+      await loadStatus();
+      await loadTickets();
+    }
+    setJoining(false);
+  };
+
+  const runDraw = async () => {
+    await fetch(`${API_BASE}/lottery/run`, { method: 'POST' });
+    await loadStatus();
+    await loadTickets();
+  };
+
+  useEffect(() => {
+    loadStatus();
+    if (token) loadTickets();
+  }, [token]);
+
+  const goPost = () => {
+    router.push('/');
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
+    <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* 页面标题 */}
+      <View style={styles.header}>
+        <ThemedText style={styles.headerTitle}>🎫 今日抽签</ThemedText>
+        <ThemedText style={styles.headerSubtitle}>每晚18:00抽签，获胜者次日独家发帖</ThemedText>
+      </View>
+
+      {/* 抽签状态卡片 */}
+      <View style={styles.ticketCard}>
+        <LinearGradient
+          colors={[colors.primary[50], colors.secondary[50]]}
+          style={styles.ticketGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          {/* 票据锯齿边框装饰 */}
+          <View style={styles.ticketNotch} />
+          
+          <View style={styles.ticketContent}>
+            <View style={styles.statusRow}>
+              <View style={styles.statusBadge}>
+                <ThemedText style={styles.statusBadgeText}>
+                  {status?.lottery?.status === 'completed' ? '已完成' : '待抽签'}
+                </ThemedText>
+              </View>
+              {hasWon && (
+                <View style={styles.winnerBadge}>
+                  <ThemedText style={styles.winnerBadgeText}>🏆 Winner</ThemedText>
+                </View>
+              )}
+            </View>
+
+            {status?.lottery?.winnerUserId ? (
+              <View style={styles.winnerSection}>
+                <ThemedText style={styles.winnerLabel}>中奖用户</ThemedText>
+                <ThemedText style={styles.winnerName}>
+                  {hasWon ? '恭喜你！' : `用户 #${status.lottery.winnerUserId}`}
+                </ThemedText>
+              </View>
+            ) : (
+              <View style={styles.waitingSection}>
+                <ThemedText style={styles.waitingEmoji}>⏳</ThemedText>
+                <ThemedText style={styles.waitingText}>等待揭晓</ThemedText>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            <View style={styles.infoRow}>
+              <View style={styles.infoItem}>
+                <ThemedText style={styles.infoLabel}>抽签时间</ThemedText>
+                <ThemedText style={styles.infoValue}>每晚 18:00</ThemedText>
+              </View>
+              <View style={styles.infoItem}>
+                <ThemedText style={styles.infoLabel}>参与人数</ThemedText>
+                <ThemedText style={styles.infoValue}>{tickets.length} 人</ThemedText>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {/* 参与按钮 */}
+      {token && !hasJoined && (
+        <TouchableOpacity 
+          style={styles.joinButton} 
+          onPress={joinLottery}
+          disabled={joining || hasWon}
+        >
+          <LinearGradient
+            colors={hasWon ? [colors.neutral[300], colors.neutral[400]] : [colors.primary[500], colors.primary[600]]}
+            style={styles.joinButtonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <ThemedText style={styles.joinButtonText}>
+              {joining ? '报名中...' : hasWon ? '已获得发帖权' : '🎟️ 立即报名'}
             </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
+      {hasJoined && !hasWon && (
+        <View style={styles.joinedBadge}>
+          <ThemedText style={styles.joinedText}>✓ 已报名，祝你好运！</ThemedText>
+        </View>
+      )}
+
+      {hasWon && (
+        <TouchableOpacity style={styles.goPostButton} onPress={goPost}>
+          <LinearGradient
+            colors={[colors.secondary[400], colors.secondary[500]]}
+            style={styles.goPostGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <ThemedText style={styles.goPostText}>✨ 去发帖</ThemedText>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
+      {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
+
+      {/* 报名列表 */}
+      {token && tickets.length > 0 && (
+        <View style={styles.participantsCard}>
+          <ThemedText style={styles.participantsTitle}>👥 报名列表</ThemedText>
+          <View style={styles.participantsGrid}>
+            {tickets.slice(0, 12).map((ticket) => (
+              <View 
+                key={ticket.id} 
+                style={[
+                  styles.participantAvatar,
+                  ticket.user.id === user?.id && styles.participantAvatarHighlight
+                ]}
+              >
+                <ThemedText style={styles.participantText}>
+                  {(ticket.user.name || ticket.user.phone || '?')[0].toUpperCase()}
+                </ThemedText>
+              </View>
+            ))}
+            {tickets.length > 12 && (
+              <View style={styles.participantMore}>
+                <ThemedText style={styles.participantMoreText}>+{tickets.length - 12}</ThemedText>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* 调试功能 */}
+      {__DEV__ && (
+        <View style={styles.debugCard}>
+          <ThemedText style={styles.debugTitle}>🛠️ 调试工具</ThemedText>
+          <TouchableOpacity style={styles.debugButton} onPress={runDraw}>
+            <ThemedText style={styles.debugButtonText}>手动触发抽签</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.debugButton} onPress={loadStatus}>
+            <ThemedText style={styles.debugButtonText}>刷新状态</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.debugButton} onPress={loadTickets}>
+            <ThemedText style={styles.debugButtonText}>刷新列表</ThemedText>
+          </TouchableOpacity>
+        </View>
+      )}
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+    padding: spacing[4],
   },
-  titleContainer: {
+
+  // 页头
+  header: {
+    marginBottom: spacing[6],
+  },
+  headerTitle: {
+    fontSize: typography.fontSize['3xl'],
+    fontWeight: typography.fontWeight.bold,
+    color: colors.neutral[900],
+    marginBottom: spacing[2],
+  },
+  headerSubtitle: {
+    fontSize: typography.fontSize.base,
+    color: colors.neutral[600],
+  },
+
+  // 票据卡片
+  ticketCard: {
+    marginBottom: spacing[5],
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    ...shadows.md,
+  },
+  ticketGradient: {
+    padding: spacing[6],
+    position: 'relative',
+  },
+  ticketNotch: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.background.secondary,
+    transform: [{ translateY: -8 }, { translateX: -8 }],
+  },
+  ticketContent: {
+    gap: spacing[4],
+  },
+  statusRow: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statusBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: borderRadius.full,
+  },
+  statusBadgeText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary[600],
+  },
+  winnerBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
+    borderRadius: borderRadius.full,
+  },
+  winnerBadgeText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary[600],
+  },
+  winnerSection: {
+    alignItems: 'center',
+    paddingVertical: spacing[4],
+  },
+  winnerLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.neutral[600],
+    marginBottom: spacing[2],
+  },
+  winnerName: {
+    fontSize: typography.fontSize['2xl'],
+    fontWeight: typography.fontWeight.bold,
+    color: colors.neutral[900],
+  },
+  waitingSection: {
+    alignItems: 'center',
+    paddingVertical: spacing[6],
+  },
+  waitingEmoji: {
+    fontSize: 48,
+    marginBottom: spacing[2],
+  },
+  waitingText: {
+    fontSize: typography.fontSize.lg,
+    color: colors.neutral[600],
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    marginVertical: spacing[2],
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  infoItem: {
+    alignItems: 'center',
+  },
+  infoLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.neutral[600],
+    marginBottom: spacing[1],
+  },
+  infoValue: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.neutral[900],
+  },
+
+  // 按钮
+  joinButton: {
+    marginBottom: spacing[4],
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    ...shadows.md,
+  },
+  joinButtonGradient: {
+    paddingVertical: spacing[4],
+    alignItems: 'center',
+  },
+  joinButtonText: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: '#ffffff',
+  },
+  joinedBadge: {
+    backgroundColor: colors.success,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[3],
+    alignItems: 'center',
+    marginBottom: spacing[4],
+  },
+  joinedText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: '#ffffff',
+  },
+  goPostButton: {
+    marginBottom: spacing[4],
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    ...shadows.md,
+  },
+  goPostGradient: {
+    paddingVertical: spacing[4],
+    alignItems: 'center',
+  },
+  goPostText: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: '#ffffff',
+  },
+  errorText: {
+    textAlign: 'center',
+    color: colors.error,
+    fontSize: typography.fontSize.sm,
+    marginBottom: spacing[4],
+  },
+
+  // 参与者列表
+  participantsCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: borderRadius.xl,
+    padding: spacing[5],
+    marginBottom: spacing[4],
+    ...shadows.sm,
+  },
+  participantsTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.neutral[900],
+    marginBottom: spacing[4],
+  },
+  participantsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[3],
+  },
+  participantAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  participantAvatarHighlight: {
+    borderColor: colors.primary[500],
+    ...shadows.colored.pink,
+  },
+  participantText: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary[600],
+  },
+  participantMore: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.neutral[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  participantMoreText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.neutral[600],
+  },
+
+  // 调试工具
+  debugCard: {
+    backgroundColor: colors.neutral[100],
+    borderRadius: borderRadius.lg,
+    padding: spacing[4],
+    gap: spacing[3],
+  },
+  debugTitle: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.neutral[700],
+    marginBottom: spacing[2],
+  },
+  debugButton: {
+    backgroundColor: '#ffffff',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.neutral[200],
+  },
+  debugButtonText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.neutral[700],
   },
 });
