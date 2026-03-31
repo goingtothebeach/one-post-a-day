@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
+import json
 import os
+import random
 import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -15,11 +17,12 @@ FAKE_OTP = os.getenv("DEV_FAKE_OTP", "0") == "1"
 
 ALIYUN_ACCESS_KEY_ID = os.getenv("ALIYUN_ACCESS_KEY_ID", "")
 ALIYUN_ACCESS_KEY_SECRET = os.getenv("ALIYUN_ACCESS_KEY_SECRET", "")
-ALIYUN_SMS_SCHEME = os.getenv("ALIYUN_SMS_SCHEME", "")
 ALIYUN_SMS_SIGN_NAME = os.getenv("ALIYUN_SMS_SIGN_NAME", "")
 ALIYUN_SMS_TEMPLATE_CODE = os.getenv("ALIYUN_SMS_TEMPLATE_CODE", "")
+ALIYUN_SMS_SCHEME = os.getenv("ALIYUN_SMS_SCHEME", "")
 
-# 频率限制存储: {phone: sent_at}
+# 验证码存储: {phone: {code, expires, sent_at}}
+OTP_STORE: dict[str, dict] = {}
 RATE_LIMIT: dict[str, datetime] = {}
 
 
@@ -34,8 +37,7 @@ def _make_dypns_client():
     return Client(config)
 
 
-def send_sms_verify_code(phone: str) -> bool:
-    import json
+def send_sms(phone: str, code: str) -> bool:
     from alibabacloud_dypnsapi20170525 import models as dypns_models
     client = _make_dypns_client()
     req = dypns_models.SendSmsVerifyCodeRequest(
@@ -43,24 +45,13 @@ def send_sms_verify_code(phone: str) -> bool:
         country_code="86",
         sign_name=ALIYUN_SMS_SIGN_NAME,
         template_code=ALIYUN_SMS_TEMPLATE_CODE,
-        template_param=json.dumps({"code": "000000", "min": "5"}),
+        template_param=json.dumps({"code": code, "min": "5"}),
         scheme_name=ALIYUN_SMS_SCHEME or None,
     )
     resp = client.send_sms_verify_code(req)
     if not resp.body.success:
         raise Exception(f"code={resp.body.code} message={resp.body.message}")
     return True
-
-
-def check_sms_verify_code(phone: str, code: str) -> bool:
-    from alibabacloud_dypnsapi20170525 import models as dypns_models
-    client = _make_dypns_client()
-    req = dypns_models.CheckSmsVerifyCodeRequest(
-        phone_number=phone,
-        verify_code=code,
-    )
-    resp = client.check_sms_verify_code(req)
-    return resp.body.model.verify_result == "PASS"
 
 
 class RequestOtpPayload(BaseModel):
@@ -100,44 +91,43 @@ def request_otp(payload: RequestOtpPayload):
         elapsed = (now - RATE_LIMIT[phone]).total_seconds()
         if elapsed < 60:
             remaining = 60 - int(elapsed)
-            raise HTTPException(
-                status_code=429,
-                detail=f"请等待 {remaining} 秒后再重试"
-            )
+            raise HTTPException(status_code=429, detail=f"请等待 {remaining} 秒后再重试")
 
-    if FAKE_OTP:
-        RATE_LIMIT[phone] = now
-        return {"ok": True, "code": "123456", "expires_in": 300}
+    code = "123456" if FAKE_OTP else f"{random.randint(0, 999999):06d}"
 
-    try:
-        ok = send_sms_verify_code(phone)
-        if not ok:
-            raise HTTPException(status_code=500, detail="短信发送失败，请稍后重试")
-        RATE_LIMIT[phone] = now
-        return {"ok": True, "expires_in": 300}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"短信发送失败：{str(e)}")
+    if not FAKE_OTP:
+        try:
+            send_sms(phone, code)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"短信发送失败：{str(e)}")
+
+    OTP_STORE[phone] = {
+        "code": code,
+        "expires": now + timedelta(minutes=5),
+    }
+    RATE_LIMIT[phone] = now
+
+    return {"ok": True, "code": code if FAKE_OTP else None, "expires_in": 300}
 
 
 @router.post("/verify-otp", response_model=schemas.AuthResponse)
 def verify_otp(payload: VerifyPayload, db: Session = Depends(get_db)):
     phone = payload.phone
     code = payload.code
+    now = datetime.now()
 
-    if FAKE_OTP:
-        if code != "123456":
-            raise HTTPException(status_code=400, detail="验证码错误")
-    else:
-        try:
-            passed = check_sms_verify_code(phone, code)
-            if not passed:
-                raise HTTPException(status_code=400, detail="验证码错误或已过期")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"验证失败：{str(e)}")
+    if phone not in OTP_STORE:
+        raise HTTPException(status_code=400, detail="验证码未发送或已过期")
+
+    stored = OTP_STORE[phone]
+    if now > stored["expires"]:
+        del OTP_STORE[phone]
+        raise HTTPException(status_code=400, detail="验证码已过期，请重新获取")
+
+    if code != stored["code"]:
+        raise HTTPException(status_code=400, detail="验证码错误")
+
+    del OTP_STORE[phone]
 
     user = db.query(models.User).filter(models.User.phone == phone).first()
     if not user:
