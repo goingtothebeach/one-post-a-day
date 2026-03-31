@@ -693,7 +693,7 @@ const styles = StyleSheet.create({
     width: '90%',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: borderRadius['3xl'],
-    padding: spacing[8],
+    padding: spacing[5],
     ...shadows.xl,
   },
   logoContainer: {
