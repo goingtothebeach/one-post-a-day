@@ -42,8 +42,6 @@ def send_sms_verify_code(phone: str) -> bool:
         country_code="86",
         sign_name=ALIYUN_SMS_SIGN_NAME or None,
         scheme_name=ALIYUN_SMS_SCHEME or None,
-        template_code=ALIYUN_SMS_TEMPLATE_CODE or None,
-        template_param='{"min":"5"}',
     )
     resp = client.send_sms_verify_code(req)
     code = resp.body.code
