@@ -46,7 +46,10 @@ def send_sms_verify_code(phone: str) -> bool:
         template_param='{"min":"5"}',
     )
     resp = client.send_sms_verify_code(req)
-    return resp.body.code == "OK"
+    code = resp.body.code
+    if code not in ("OK", "ok", None, ""):
+        raise Exception(f"code={code} message={resp.body.message}")
+    return True
 
 
 def check_sms_verify_code(phone: str, code: str) -> bool:
