@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npx expo export -p web",
+  "buildCommand": "",
   "outputDirectory": "dist",
   "rewrites": [
     {
