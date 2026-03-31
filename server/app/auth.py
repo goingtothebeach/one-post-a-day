@@ -35,18 +35,20 @@ def _make_dypns_client():
 
 
 def send_sms_verify_code(phone: str) -> bool:
+    import json
     from alibabacloud_dypnsapi20170525 import models as dypns_models
     client = _make_dypns_client()
     req = dypns_models.SendSmsVerifyCodeRequest(
         phone_number=phone,
         country_code="86",
-        sign_name=ALIYUN_SMS_SIGN_NAME or None,
+        sign_name=ALIYUN_SMS_SIGN_NAME,
+        template_code=ALIYUN_SMS_TEMPLATE_CODE,
+        template_param=json.dumps({"code": "000000", "min": "5"}),
         scheme_name=ALIYUN_SMS_SCHEME or None,
     )
     resp = client.send_sms_verify_code(req)
-    code = resp.body.code
-    if code not in ("OK", "ok", None, ""):
-        raise Exception(f"code={code} message={resp.body.message}")
+    if not resp.body.success:
+        raise Exception(f"code={resp.body.code} message={resp.body.message}")
     return True
 
 
