@@ -3,15 +3,11 @@ import React from 'react';
 import { Platform, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { useAuth } from '../context/AuthContext';
 import { DesignSystem } from '@/constants/design-system';
 
 const { colors } = DesignSystem;
 
 export default function TabLayout() {
-  const { token, user, hydrated } = useAuth();
-  const authed = hydrated && Boolean(token && user?.id);
-
   const screenOptions = {
     tabBarActiveTintColor: colors.primary[600],
     tabBarInactiveTintColor: colors.neutral[400],
@@ -81,7 +77,6 @@ export default function TabLayout() {
         name="explore"
         options={{
           title: '抽签',
-          href: authed ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol size={focused ? 30 : 28} name="ticket.fill" color={color} />
           ),
@@ -91,7 +86,6 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: '我的',
-          href: authed ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol size={focused ? 30 : 28} name="person.crop.circle.fill" color={color} />
           ),
