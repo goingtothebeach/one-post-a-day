@@ -808,6 +808,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.semibold,
     marginBottom: spacing[3],
+    ...(({ outline: 'none' }) as any),
   },
   postContentInput: {
     backgroundColor: colors.background.secondary,
@@ -817,6 +818,7 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
     marginBottom: spacing[3],
+    ...(({ outline: 'none' }) as any),
   },
   postCountdownRow: {
     backgroundColor: colors.primary[50],

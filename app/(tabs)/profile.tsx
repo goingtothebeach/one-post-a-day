@@ -732,6 +732,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[3],
     fontSize: typography.fontSize.base,
+    ...(({ outline: 'none' }) as any),
     color: colors.neutral[900],
     marginBottom: spacing[5],
   },
