@@ -1,13 +1,19 @@
 import random
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from . import models
 
+SHANGHAI = ZoneInfo('Asia/Shanghai')
+
+def now_shanghai():
+    return datetime.now(SHANGHAI)
+
 def today_range():
-    today = date.today()
-    start = datetime(today.year, today.month, today.day)
+    now = now_shanghai()
+    start = datetime(now.year, now.month, now.day)
     end = start + timedelta(days=1)
     return start, end
 

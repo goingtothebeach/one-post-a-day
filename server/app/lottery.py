@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, date
 import os
 import random
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -10,10 +11,14 @@ from . import models
 router = APIRouter(prefix="/lottery", tags=["lottery"])
 
 CRON_SECRET = os.getenv("CRON_SECRET", "")
+SHANGHAI = ZoneInfo('Asia/Shanghai')
+
+def now_shanghai():
+    return datetime.now(SHANGHAI)
 
 def today_range():
-    today = date.today()
-    start = datetime(today.year, today.month, today.day)
+    now = now_shanghai()
+    start = datetime(now.year, now.month, now.day)
     end = start + timedelta(days=1)
     return start, end
 
@@ -23,7 +28,7 @@ def next_draw_range():
     18:00 前 → 今天的抽签
     18:00 后 → 明天的抽签
     """
-    now = datetime.now()
+    now = now_shanghai()
     today = datetime(now.year, now.month, now.day)
     if now.hour < 18:
         start = today

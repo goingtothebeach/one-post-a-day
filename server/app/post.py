@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -7,18 +8,23 @@ from . import models, schemas
 
 router = APIRouter(prefix="/post", tags=["post"])
 
+SHANGHAI = ZoneInfo('Asia/Shanghai')
+
+def now_shanghai():
+    return datetime.now(SHANGHAI)
+
 def today_start():
-    now = datetime.now()
+    now = now_shanghai()
     return datetime(year=now.year, month=now.month, day=now.day)
 
 def get_post_window():
     """
     返回 (draw_date, deadline)
-    draw_date: 本次抽签对应的日期零点
+    draw_date: 本次抽签对应的日期零点（naive datetime，北京时间）
     deadline: 允许发帖的截止时间（次日 18:00，即下一轮抽签开始前）
     规则：18:00 前看昨天的抽签；18:00 后看今天的抽签
     """
-    now = datetime.now()
+    now = now_shanghai()
     today = datetime(now.year, now.month, now.day)
     if now.hour < 18:
         draw_date = today - timedelta(days=1)
@@ -93,7 +99,7 @@ def create_post(payload: schemas.PostCreate, db: Session = Depends(get_db), user
         raise HTTPException(status_code=400, detail="missing fields")
 
     draw_date, deadline = get_post_window()
-    now = datetime.now()
+    now = now_shanghai()
     if now >= deadline:
         raise HTTPException(status_code=403, detail="post deadline passed")
     lottery = db.query(models.Lottery).filter(models.Lottery.draw_date == draw_date).first()
