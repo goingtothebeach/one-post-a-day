@@ -18,7 +18,12 @@ def today_range():
 def status(db: Session = Depends(get_db)):
     start, end = today_range()
     lottery = db.query(models.Lottery).filter(models.Lottery.draw_date >= start, models.Lottery.draw_date < end).first()
-    return {"lottery": lottery}
+    if lottery and lottery.winner_user_id:
+        deadline = lottery.draw_date + timedelta(days=2)
+        deadline_iso = deadline.isoformat()
+    else:
+        deadline_iso = None
+    return {"lottery": lottery, "winner_deadline": deadline_iso}
 
 @router.post("/join")
 def join(db: Session = Depends(get_db), user=Depends(get_current_user)):

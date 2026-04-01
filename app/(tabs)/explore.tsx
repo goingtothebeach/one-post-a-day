@@ -25,6 +25,7 @@ type LotteryStatus = {
     winnerUserId?: number | null;
     status: string;
   } | null;
+  winner_deadline?: string | null;
 };
 
 type TicketUser = { id: number; phone: string; name?: string | null; avatar?: string | null };
@@ -48,6 +49,7 @@ export default function ExploreScreen() {
   const [loading, setLoading] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
+  const [postCountdown, setPostCountdown] = useState('');
 
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -72,6 +74,28 @@ export default function ExploreScreen() {
     const today = dayjs().startOf('day');
     return drawDay.isSame(today) && status.lottery.winnerUserId === user?.id;
   }, [status, user]);
+
+  useEffect(() => {
+    if (!hasWon || !status?.winner_deadline) {
+      setPostCountdown('');
+      return;
+    }
+    const deadline = dayjs(status.winner_deadline);
+    const tick = () => {
+      const diff = deadline.diff(dayjs(), 'second');
+      if (diff <= 0) {
+        setPostCountdown('已截止');
+        return;
+      }
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      setPostCountdown(`${h > 0 ? `${h}小时` : ''}${m}分${s}秒`);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [hasWon, status?.winner_deadline]);
 
   const hasJoined = useMemo(() => {
     if (!token || !tickets.length) return false;
@@ -217,6 +241,14 @@ export default function ExploreScreen() {
           </LinearGradient>
         </TouchableOpacity>
       )}
+
+      {hasWon && postCountdown ? (
+        <View style={styles.countdownBadge}>
+          <ThemedText style={styles.countdownText}>
+            {postCountdown === '已截止' ? '⏰ 发帖已截止' : `⏳ 发帖截止还剩 ${postCountdown}`}
+          </ThemedText>
+        </View>
+      ) : null}
 
       {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
 
@@ -436,6 +468,21 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: '#ffffff',
+  },
+  countdownBadge: {
+    backgroundColor: colors.primary[50],
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[4],
+    alignItems: 'center',
+    marginBottom: spacing[4],
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+  },
+  countdownText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary[600],
   },
   errorText: {
     textAlign: 'center',

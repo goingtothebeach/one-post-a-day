@@ -52,6 +52,11 @@ type LotteryStatus = {
   status: string;
 } | null;
 
+type LotteryResponse = {
+  lottery: LotteryStatus;
+  winner_deadline?: string | null;
+};
+
 export default function HomeScreen() {
   const { token, user, hydrated, setAuth, logout } = useAuth();
   const insets = useAppInsets();
@@ -67,6 +72,8 @@ export default function HomeScreen() {
   const [images, setImages] = useState<{ url: string; width?: number; height?: number; sort?: number }[]>([]);
   const [activeMap, setActiveMap] = useState<Record<number, number>>({});
   const [lottery, setLottery] = useState<LotteryStatus>(null);
+  const [winnerDeadline, setWinnerDeadline] = useState<string | null>(null);
+  const [postCountdown, setPostCountdown] = useState('');
   
   // 登录相关状态
   const [countdown, setCountdown] = useState(0);
@@ -116,8 +123,9 @@ export default function HomeScreen() {
       router.replace('/');
       return;
     }
-    const data = await res.json();
+    const data: LotteryResponse = await res.json();
     setLottery(data?.lottery || null);
+    setWinnerDeadline(data?.winner_deadline || null);
   };
 
   useEffect(() => {
@@ -241,18 +249,40 @@ export default function HomeScreen() {
   };
 
   const isWinnerToday = useMemo(() => {
-    if (!lottery) return false;
-    const draw = dayjs(lottery.draw_date).startOf('day');
-    const today = dayjs().startOf('day');
-    return draw.isSame(today) && lottery.winner_user_id === user?.id;
-  }, [lottery, user]);
+    if (!lottery || !lottery.winner_user_id) return false;
+    if (lottery.winner_user_id !== user?.id) return false;
+    if (!winnerDeadline) return false;
+    return dayjs().isBefore(dayjs(winnerDeadline));
+  }, [lottery, user, winnerDeadline]);
 
   const canPostToday = isWinnerToday;
   const hasTodayPost = useMemo(() => {
     if (!lottery) return false;
-    const today = dayjs().startOf('day');
-    return feed.some((p) => dayjs(p.publishDate).startOf('day').isSame(today));
+    const drawDay = dayjs(lottery.draw_date).startOf('day');
+    return feed.some((p) => dayjs(p.publishDate).startOf('day').isSame(drawDay));
   }, [feed, lottery]);
+
+  useEffect(() => {
+    if (!isWinnerToday || !winnerDeadline) {
+      setPostCountdown('');
+      return;
+    }
+    const deadline = dayjs(winnerDeadline);
+    const tick = () => {
+      const diff = deadline.diff(dayjs(), 'second');
+      if (diff <= 0) {
+        setPostCountdown('已截止');
+        return;
+      }
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      setPostCountdown(`${h > 0 ? `${h}小时` : ''}${m}分${s}秒`);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [isWinnerToday, winnerDeadline]);
 
   if (!hydrated) {
     return (
@@ -359,6 +389,14 @@ export default function HomeScreen() {
                 <ThemedText style={styles.winnerBadgeText}>Winner</ThemedText>
               </View>
             </View>
+
+            {postCountdown ? (
+              <View style={styles.postCountdownRow}>
+                <ThemedText style={styles.postCountdownText}>
+                  {postCountdown === '已截止' ? '⏰ 发帖已截止' : `⏳ 截止还剩 ${postCountdown}`}
+                </ThemedText>
+              </View>
+            ) : null}
 
             <TextInput
               placeholder="给你的帖子起个标题..."
@@ -781,6 +819,20 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
     marginBottom: spacing[3],
+  },
+  postCountdownRow: {
+    backgroundColor: colors.primary[50],
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    marginBottom: spacing[3],
+    borderWidth: 1,
+    borderColor: colors.primary[200],
+  },
+  postCountdownText: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary[600],
   },
   uploadButton: {
     backgroundColor: colors.background.secondary,

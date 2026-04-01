@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -10,6 +10,22 @@ router = APIRouter(prefix="/post", tags=["post"])
 def today_start():
     now = datetime.now()
     return datetime(year=now.year, month=now.month, day=now.day)
+
+def get_post_window():
+    """
+    返回 (draw_date, deadline)
+    draw_date: 本次抽签对应的日期零点
+    deadline: 允许发帖的截止时间（抽签日次日 24:00，即后天零点）
+    规则：18:00 前看昨天的抽签；18:00 后看今天的抽签
+    """
+    now = datetime.now()
+    today = datetime(now.year, now.month, now.day)
+    if now.hour < 18:
+        draw_date = today - timedelta(days=1)
+    else:
+        draw_date = today
+    deadline = draw_date + timedelta(days=2)
+    return draw_date, deadline
 
 @router.get("/feed")
 def feed(db: Session = Depends(get_db), user=Depends(get_current_user_optional)):
@@ -76,11 +92,14 @@ def create_post(payload: schemas.PostCreate, db: Session = Depends(get_db), user
     if not payload.title or not payload.content:
         raise HTTPException(status_code=400, detail="missing fields")
 
-    today = today_start()
-    lottery = db.query(models.Lottery).filter(models.Lottery.draw_date == today).first()
+    draw_date, deadline = get_post_window()
+    now = datetime.now()
+    if now >= deadline:
+        raise HTTPException(status_code=403, detail="post deadline passed")
+    lottery = db.query(models.Lottery).filter(models.Lottery.draw_date == draw_date).first()
     if not lottery or lottery.winner_user_id != user.id:
         raise HTTPException(status_code=403, detail="not winner")
-    existing = db.query(models.Post).filter(models.Post.publish_date == today).first()
+    existing = db.query(models.Post).filter(models.Post.publish_date == draw_date).first()
     if existing:
         raise HTTPException(status_code=400, detail="post already exists")
 
@@ -91,7 +110,7 @@ def create_post(payload: schemas.PostCreate, db: Session = Depends(get_db), user
         media_url=payload.mediaUrl,
         media_width=payload.mediaWidth,
         media_height=payload.mediaHeight,
-        publish_date=today,
+        publish_date=draw_date,
     )
     db.add(post)
     db.flush()
