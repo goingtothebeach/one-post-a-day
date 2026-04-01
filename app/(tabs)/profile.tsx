@@ -6,10 +6,24 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppInsets } from '@/hooks/use-app-insets';
 import { useEffect, useState } from 'react';
-import { FlatList, Image, StyleSheet, TouchableOpacity, View, StatusBar } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+  StatusBar,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import dayjs from 'dayjs';
 import { DesignSystem } from '@/constants/design-system';
+import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
 
 const { colors, spacing, borderRadius, shadows, typography } = DesignSystem;
 
@@ -42,9 +56,15 @@ export default function ProfileScreen() {
       router.replace('/');
     }
   }, [hydrated, token]);
+
   const [tickets, setTickets] = useState<TicketHistory[]>([]);
   const [profileData, setProfileData] = useState<ProfileData>({ likes: [], favorites: [] });
   const [activeTab, setActiveTab] = useState<TabKey>('likes');
+
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [editNameVisible, setEditNameVisible] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const headers = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
 
@@ -71,6 +91,57 @@ export default function ProfileScreen() {
 
   const wonCount = tickets.filter((t) => t.winner_user_id === user?.id).length;
   const listData = activeTab === 'likes' ? profileData.likes : profileData.favorites;
+
+  const updateProfile = async (payload: { name?: string; avatar?: string }) => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/profile`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAuth(token, data.user);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pickAvatar = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!res.canceled && res.assets?.[0]) {
+      try {
+        const asset = res.assets[0];
+        const sts = await getSts(token || undefined);
+        const key = buildObjectKey(sts.key_prefix + '-avatar', asset.fileName || 'avatar.jpg');
+        const uri = asset.uri;
+        const blob =
+          Platform.OS === 'web'
+            ? await (await fetch(uri)).blob()
+            : ({ uri, type: 'image/jpeg', name: key.split('/').pop() || 'avatar.jpg' } as any);
+        const url = await uploadToOss(sts, key, blob);
+        await updateProfile({ avatar: url });
+        setSettingsVisible(false);
+      } catch {
+        Alert.alert('上传失败', '请稍后重试');
+      }
+    }
+  };
+
+  const saveNickname = async () => {
+    if (!newName.trim()) return;
+    await updateProfile({ name: newName.trim() });
+    setEditNameVisible(false);
+    setSettingsVisible(false);
+  };
 
   if (!token) {
     return (
@@ -100,7 +171,7 @@ export default function ProfileScreen() {
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" />
-      
+
       {/* 用户信息卡片 */}
       <View style={styles.profileCard}>
         <LinearGradient
@@ -109,6 +180,11 @@ export default function ProfileScreen() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
+          {/* 设置按钮 */}
+          <TouchableOpacity style={styles.settingsBtn} onPress={() => setSettingsVisible(true)}>
+            <ThemedText style={styles.settingsIcon}>⚙️</ThemedText>
+          </TouchableOpacity>
+
           {/* 头像区域 */}
           <View style={styles.avatarContainer}>
             <LinearGradient
@@ -118,14 +194,17 @@ export default function ProfileScreen() {
               end={{ x: 1, y: 1 }}
             >
               <View style={styles.avatarInner}>
-                <ThemedText style={styles.avatarText}>
-                  {(user?.name || user?.phone || '?')[0].toUpperCase()}
-                </ThemedText>
+                {user?.avatar ? (
+                  <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
+                ) : (
+                  <ThemedText style={styles.avatarText}>
+                    {(user?.name || user?.phone || '?')[0].toUpperCase()}
+                  </ThemedText>
+                )}
               </View>
             </LinearGradient>
           </View>
 
-          {/* 用户信息 */}
           <ThemedText style={styles.userName}>{user?.name || user?.phone}</ThemedText>
           <ThemedText style={styles.userBio}>分享生活，记录美好瞬间 ✨</ThemedText>
 
@@ -148,23 +227,11 @@ export default function ProfileScreen() {
               <ThemedText style={styles.statLabel}>中签率</ThemedText>
             </View>
           </View>
-
-          {/* 退出登录按钮 */}
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={async () => {
-              await logout();
-              router.replace('/');
-            }}
-          >
-            <ThemedText style={styles.logoutText}>退出登录</ThemedText>
-          </TouchableOpacity>
         </LinearGradient>
       </View>
 
       {/* 内容区域 */}
       <View style={styles.contentSection}>
-        {/* Tab切换 */}
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'likes' && styles.tabActive]}
@@ -184,7 +251,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 内容列表 */}
         {listData.length > 0 ? (
           <FlatList
             data={listData}
@@ -226,6 +292,112 @@ export default function ProfileScreen() {
           </View>
         )}
       </View>
+
+      {/* 设置底部弹层 */}
+      <Modal
+        visible={settingsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSettingsVisible(false)}>
+          <View style={styles.modalOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <ThemedText style={styles.sheetTitle}>设置</ThemedText>
+
+          <TouchableOpacity style={styles.sheetItem} onPress={pickAvatar}>
+            <View style={styles.sheetItemIcon}>
+              <ThemedText style={styles.sheetItemEmoji}>🖼️</ThemedText>
+            </View>
+            <ThemedText style={styles.sheetItemText}>修改头像</ThemedText>
+            <ThemedText style={styles.sheetItemArrow}>›</ThemedText>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sheetItem}
+            onPress={() => {
+              setNewName(user?.name || '');
+              setEditNameVisible(true);
+            }}
+          >
+            <View style={styles.sheetItemIcon}>
+              <ThemedText style={styles.sheetItemEmoji}>✏️</ThemedText>
+            </View>
+            <ThemedText style={styles.sheetItemText}>修改昵称</ThemedText>
+            <ThemedText style={styles.sheetItemArrow}>›</ThemedText>
+          </TouchableOpacity>
+
+          <View style={styles.sheetDivider} />
+
+          <TouchableOpacity
+            style={styles.sheetItem}
+            onPress={async () => {
+              setSettingsVisible(false);
+              await logout();
+              router.replace('/');
+            }}
+          >
+            <View style={styles.sheetItemIcon}>
+              <ThemedText style={styles.sheetItemEmoji}>🚪</ThemedText>
+            </View>
+            <ThemedText style={[styles.sheetItemText, styles.logoutText]}>退出登录</ThemedText>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.sheetCancel} onPress={() => setSettingsVisible(false)}>
+            <ThemedText style={styles.sheetCancelText}>取消</ThemedText>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* 修改昵称弹层 */}
+      <Modal
+        visible={editNameVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditNameVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setEditNameVisible(false)}>
+          <View style={styles.modalOverlay} />
+        </TouchableWithoutFeedback>
+        <View style={styles.nameModal}>
+          <ThemedText style={styles.nameModalTitle}>修改昵称</ThemedText>
+          <TextInput
+            style={styles.nameInput}
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="请输入新昵称"
+            placeholderTextColor={colors.neutral[400]}
+            maxLength={20}
+            autoFocus
+          />
+          <View style={styles.nameModalActions}>
+            <TouchableOpacity
+              style={styles.nameModalCancel}
+              onPress={() => setEditNameVisible(false)}
+            >
+              <ThemedText style={styles.nameModalCancelText}>取消</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.nameModalConfirm, saving && { opacity: 0.6 }]}
+              onPress={saveNickname}
+              disabled={saving}
+            >
+              <LinearGradient
+                colors={[colors.primary[500], colors.primary[600]]}
+                style={styles.nameModalConfirmGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <ThemedText style={styles.nameModalConfirmText}>
+                  {saving ? '保存中...' : '保存'}
+                </ThemedText>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -240,7 +412,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // 未登录状态
   emptyState: {
     alignItems: 'center',
     paddingHorizontal: spacing[8],
@@ -254,9 +425,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing[6],
   },
-  emptyEmoji: {
-    fontSize: 48,
-  },
+  emptyEmoji: { fontSize: 48 },
   emptyTitle: {
     fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
@@ -283,10 +452,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
 
-  // 个人信息卡片
   profileCard: {
     margin: spacing[4],
-    marginBottom: spacing[5],
+    marginBottom: spacing[3],
     borderRadius: borderRadius.xl,
     overflow: 'hidden',
     ...shadows.md,
@@ -295,8 +463,23 @@ const styles = StyleSheet.create({
     padding: spacing[6],
     alignItems: 'center',
   },
+  settingsBtn: {
+    position: 'absolute',
+    top: spacing[4],
+    right: spacing[4],
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsIcon: {
+    fontSize: 18,
+  },
   avatarContainer: {
     marginBottom: spacing[4],
+    marginTop: spacing[2],
   },
   avatarGradientBorder: {
     width: 96,
@@ -311,6 +494,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     fontSize: typography.fontSize['4xl'],
@@ -335,12 +523,8 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     padding: spacing[4],
     width: '100%',
-    marginBottom: spacing[5],
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
+  statItem: { flex: 1, alignItems: 'center' },
   statValue: {
     fontSize: typography.fontSize['3xl'],
     fontWeight: typography.fontWeight.bold,
@@ -356,21 +540,7 @@ const styles = StyleSheet.create({
     height: 40,
     backgroundColor: colors.neutral[200],
   },
-  logoutButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing[3],
-    paddingHorizontal: spacing[6],
-    borderWidth: 1,
-    borderColor: colors.neutral[200],
-  },
-  logoutText: {
-    fontSize: typography.fontSize.base,
-    color: colors.neutral[700],
-    fontWeight: typography.fontWeight.medium,
-  },
 
-  // 内容区域
   contentSection: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -392,9 +562,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     backgroundColor: colors.background.secondary,
   },
-  tabActive: {
-    backgroundColor: colors.primary[50],
-  },
+  tabActive: { backgroundColor: colors.primary[50] },
   tabText: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.medium,
@@ -408,10 +576,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[4],
     paddingBottom: spacing[20],
   },
-  contentRow: {
-    gap: spacing[3],
-    marginBottom: spacing[3],
-  },
+  contentRow: { gap: spacing[3], marginBottom: spacing[3] },
   contentCard: {
     flex: 1,
     backgroundColor: colors.background.secondary,
@@ -428,12 +593,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  placeholderIcon: {
-    fontSize: 40,
-  },
-  contentInfo: {
-    padding: spacing[3],
-  },
+  placeholderIcon: { fontSize: 40 },
+  contentInfo: { padding: spacing[3] },
   contentTitle: {
     fontSize: typography.fontSize.base,
     fontWeight: typography.fontWeight.semibold,
@@ -459,11 +620,142 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing[4],
   },
-  emptyContentEmoji: {
-    fontSize: 40,
-  },
+  emptyContentEmoji: { fontSize: 40 },
   emptyContentText: {
     fontSize: typography.fontSize.base,
     color: colors.neutral[500],
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  sheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: borderRadius['3xl'],
+    borderTopRightRadius: borderRadius['3xl'],
+    paddingBottom: spacing[8],
+    paddingHorizontal: spacing[4],
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.neutral[300],
+    alignSelf: 'center',
+    marginTop: spacing[3],
+    marginBottom: spacing[4],
+  },
+  sheetTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.neutral[900],
+    textAlign: 'center',
+    marginBottom: spacing[4],
+  },
+  sheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[2],
+  },
+  sheetItemIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.neutral[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing[4],
+  },
+  sheetItemEmoji: { fontSize: 20 },
+  sheetItemText: {
+    flex: 1,
+    fontSize: typography.fontSize.base,
+    color: colors.neutral[900],
+    fontWeight: typography.fontWeight.medium,
+  },
+  sheetItemArrow: {
+    fontSize: 22,
+    color: colors.neutral[400],
+  },
+  sheetDivider: {
+    height: 1,
+    backgroundColor: colors.neutral[100],
+    marginVertical: spacing[2],
+  },
+  logoutText: {
+    color: colors.error,
+  },
+  sheetCancel: {
+    marginTop: spacing[4],
+    paddingVertical: spacing[4],
+    backgroundColor: colors.neutral[100],
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+  },
+  sheetCancelText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.neutral[700],
+  },
+
+  nameModal: {
+    position: 'absolute',
+    left: spacing[6],
+    right: spacing[6],
+    top: '35%',
+    backgroundColor: '#ffffff',
+    borderRadius: borderRadius.xl,
+    padding: spacing[6],
+    ...shadows.xl,
+  },
+  nameModalTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.neutral[900],
+    marginBottom: spacing[4],
+    textAlign: 'center',
+  },
+  nameInput: {
+    backgroundColor: colors.neutral[50],
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.neutral[200],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    fontSize: typography.fontSize.base,
+    color: colors.neutral[900],
+    marginBottom: spacing[5],
+  },
+  nameModalActions: {
+    flexDirection: 'row',
+    gap: spacing[3],
+  },
+  nameModalCancel: {
+    flex: 1,
+    paddingVertical: spacing[3],
+    backgroundColor: colors.neutral[100],
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  nameModalCancelText: {
+    fontSize: typography.fontSize.base,
+    color: colors.neutral[700],
+    fontWeight: typography.fontWeight.medium,
+  },
+  nameModalConfirm: {
+    flex: 1,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+  },
+  nameModalConfirmGradient: {
+    paddingVertical: spacing[3],
+    alignItems: 'center',
+  },
+  nameModalConfirmText: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.bold,
+    color: '#ffffff',
   },
 });

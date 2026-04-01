@@ -20,10 +20,14 @@ def tickets(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.post("")
 def update_profile(payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
     name = payload.get("name")
-    user.name = name or user.name
+    avatar = payload.get("avatar")
+    if name is not None:
+        user.name = name
+    if avatar is not None:
+        user.avatar = avatar
     db.commit()
     db.refresh(user)
-    return {"user": user}
+    return {"user": {"id": user.id, "phone": user.phone, "name": user.name, "avatar": user.avatar}}
 
 @router.get("/content", response_model=schemas.ProfileContentResponse)
 def profile_content(db: Session = Depends(get_db), user=Depends(get_current_user)):

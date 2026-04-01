@@ -8,6 +8,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     phone = Column(String(20), unique=True, index=True, nullable=False)
     name = Column(String(50))
+    avatar = Column(String(500))
     created_at = Column(DateTime, server_default=func.now())
 
     tickets = relationship("Ticket", back_populates="user")

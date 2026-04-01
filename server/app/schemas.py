@@ -6,6 +6,7 @@ class UserOut(BaseModel):
     id: int
     phone: str
     name: Optional[str]
+    avatar: Optional[str]
 
     class Config:
         from_attributes = True
