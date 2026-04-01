@@ -16,13 +16,9 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
-  const [fontsLoaded] = useFonts(
-    Platform.OS !== 'web'
-      ? {
-          MaterialIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
-        }
-      : {}
-  );
+  const [fontsLoaded] = useFonts({
+    MaterialIcons: require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+  });
 
   if (Platform.OS !== 'web' && !fontsLoaded) {
     return null;
