@@ -280,7 +280,11 @@ export default function ExploreScreen() {
                     contentFit="cover"
                   />
                 ) : (
-                  <View style={[styles.participantImage, { backgroundColor: avatarColor(ticket.user.id) }]} />
+                  <View style={[styles.participantPlaceholder, { backgroundColor: avatarColor(ticket.user.id) }]}>
+                    <ThemedText style={styles.participantInitial}>
+                      {(ticket.user.name || ticket.user.phone || '?')[0].toUpperCase()}
+                    </ThemedText>
+                  </View>
                 )}
               </View>
             ))}
@@ -534,6 +538,18 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 26,
+  },
+  participantPlaceholder: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  participantInitial: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: '#ffffff',
   },
   participantMore: {
     width: 52,
