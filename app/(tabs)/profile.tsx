@@ -4,6 +4,7 @@ import { API_BASE } from './api';
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppInsets } from '@/hooks/use-app-insets';
 import { useEffect, useState } from 'react';
 import { FlatList, Image, StyleSheet, TouchableOpacity, View, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,7 +35,7 @@ type TabKey = 'likes' | 'favorites';
 
 export default function ProfileScreen() {
   const { user, token, setAuth, logout, hydrated } = useAuth();
-  const insets = useSafeAreaInsets();
+  const insets = useAppInsets();
 
   useEffect(() => {
     if (hydrated && !token) {

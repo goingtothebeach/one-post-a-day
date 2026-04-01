@@ -23,6 +23,7 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppInsets } from '@/hooks/use-app-insets';
 import { API_BASE } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
@@ -53,7 +54,7 @@ type LotteryStatus = {
 
 export default function HomeScreen() {
   const { token, user, hydrated, setAuth, logout } = useAuth();
-  const insets = useSafeAreaInsets();
+  const insets = useAppInsets();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [feed, setFeed] = useState<FeedItem[]>([]);

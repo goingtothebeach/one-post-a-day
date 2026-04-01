@@ -4,6 +4,7 @@ import { API_BASE } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppInsets } from '@/hooks/use-app-insets';
 import { useMemo, useState, useEffect } from 'react';
 import { FlatList, StyleSheet, TouchableOpacity, View, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +30,7 @@ type TicketItem = {
 
 export default function ExploreScreen() {
   const { token, user, hydrated } = useAuth();
-  const insets = useSafeAreaInsets();
+  const insets = useAppInsets();
 
   useEffect(() => {
     if (hydrated && !token) {
