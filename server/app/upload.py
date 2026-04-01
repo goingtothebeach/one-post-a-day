@@ -20,22 +20,25 @@ REGION = os.getenv("ALIYUN_OSS_REGION", "cn-beijing")
 def credentials(user=Depends(get_current_user)):
     if not ROLE_ARN or not AK or not SK:
         raise HTTPException(status_code=500, detail="upload not configured")
-    client = AcsClient(AK, SK, REGION)
-    request = AssumeRoleRequest.AssumeRoleRequest()
-    request.set_accept_format('json')
-    request.set_RoleArn(ROLE_ARN)
-    request.set_RoleSessionName(f"onepost-{user.id}")
-    request.set_DurationSeconds(DURATION)
-    response = client.do_action_with_exception(request)
-    import json
-    data = json.loads(response)
-    creds = data['Credentials']
-    key_prefix = f"uploads/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4().hex}"
-    return {
-        "access_key_id": creds['AccessKeyId'],
-        "access_key_secret": creds['AccessKeySecret'],
-        "security_token": creds['SecurityToken'],
-        "bucket": BUCKET,
-        "endpoint": ENDPOINT,
-        "key_prefix": key_prefix,
-      }
+    try:
+        client = AcsClient(AK, SK, REGION)
+        request = AssumeRoleRequest.AssumeRoleRequest()
+        request.set_accept_format('json')
+        request.set_RoleArn(ROLE_ARN)
+        request.set_RoleSessionName(f"onepost-{user.id}")
+        request.set_DurationSeconds(DURATION)
+        response = client.do_action_with_exception(request)
+        import json
+        data = json.loads(response)
+        creds = data['Credentials']
+        key_prefix = f"uploads/{datetime.now().strftime('%Y%m%d')}/{uuid.uuid4().hex}"
+        return {
+            "access_key_id": creds['AccessKeyId'],
+            "access_key_secret": creds['AccessKeySecret'],
+            "security_token": creds['SecurityToken'],
+            "bucket": BUCKET,
+            "endpoint": ENDPOINT,
+            "key_prefix": key_prefix,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
