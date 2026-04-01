@@ -22,7 +22,22 @@ def today_range():
     end = start + timedelta(days=1)
     return start, end
 
-def next_draw_range():
+def current_draw_range():
+    """
+    返回当前活跃抽签轮次的 (start, end)
+    18:00 前 → 昨天的抽签（发帖窗口仍在）
+    18:00 后 → 今天的抽签
+    """
+    now = now_shanghai()
+    today = datetime(now.year, now.month, now.day)
+    if now.hour < 18:
+        start = today - timedelta(days=1)
+    else:
+        start = today
+    end = start + timedelta(days=1)
+    return start, end
+
+
     """
     返回下一轮抽签对应的 (start, end)
     18:00 前 → 今天的抽签
@@ -39,7 +54,7 @@ def next_draw_range():
 
 @router.get("/today/status")
 def status(db: Session = Depends(get_db)):
-    start, end = today_range()
+    start, end = current_draw_range()
     lottery = db.query(models.Lottery).filter(models.Lottery.draw_date >= start, models.Lottery.draw_date < end).first()
     if lottery and lottery.winner_user_id:
         deadline = lottery.draw_date + timedelta(days=1, hours=18)
