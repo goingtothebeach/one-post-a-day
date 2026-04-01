@@ -9,6 +9,7 @@ from jose import jwt
 from pydantic import BaseModel, validator
 from .database import get_db
 from . import models, schemas
+from .nicknames import generate_nickname
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 JWT_SECRET = os.getenv("JWT_SECRET", "devsecret")
@@ -131,7 +132,7 @@ def verify_otp(payload: VerifyPayload, db: Session = Depends(get_db)):
 
     user = db.query(models.User).filter(models.User.phone == phone).first()
     if not user:
-        user = models.User(phone=phone, name=payload.name)
+        user = models.User(phone=phone, name=payload.name or generate_nickname())
         db.add(user)
         db.commit()
         db.refresh(user)
