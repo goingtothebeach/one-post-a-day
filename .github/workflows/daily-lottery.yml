@@ -1,0 +1,16 @@
+name: Daily Lottery
+
+on:
+  schedule:
+    - cron: '0 10 * * *'  # UTC 10:00 = 北京时间 18:00
+  workflow_dispatch:       # 支持手动触发（用于测试）
+
+jobs:
+  run-lottery:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger lottery
+        run: |
+          curl -X POST "${{ secrets.RAILWAY_API_URL }}/lottery/run" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+            -f --retry 3 --retry-delay 5

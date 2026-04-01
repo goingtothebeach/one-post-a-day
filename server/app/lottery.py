@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, date
+import os
 import random
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from .database import get_db
 from .deps import get_current_user
 from . import models
 
 router = APIRouter(prefix="/lottery", tags=["lottery"])
+
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 def today_range():
     today = date.today()
@@ -65,7 +68,9 @@ def get_tickets(db: Session = Depends(get_db)):
     }
 
 @router.post("/run")
-def run(db: Session = Depends(get_db)):
+def run(db: Session = Depends(get_db), x_cron_secret: str | None = Header(default=None)):
+    if CRON_SECRET and x_cron_secret != CRON_SECRET:
+        raise HTTPException(status_code=403, detail="forbidden")
     start, end = today_range()
     tickets = db.query(models.Ticket).filter(models.Ticket.draw_date >= start, models.Ticket.draw_date < end).all()
     if not tickets:
