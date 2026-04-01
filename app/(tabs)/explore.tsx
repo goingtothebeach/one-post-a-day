@@ -21,8 +21,8 @@ function avatarColor(id: number) {
 
 type LotteryStatus = {
   lottery?: {
-    drawDate: string;
-    winnerUserId?: number | null;
+    draw_date: string;
+    winner_user_id?: number | null;
     status: string;
   } | null;
   winner_deadline?: string | null;
@@ -72,9 +72,9 @@ export default function ExploreScreen() {
 
   const hasWon = useMemo(() => {
     if (!status?.lottery) return false;
-    const drawDay = dayjs(status.lottery.drawDate).startOf('day');
+    const drawDay = dayjs(status.lottery.draw_date).startOf('day');
     const today = dayjs().startOf('day');
-    return drawDay.isSame(today) && status.lottery.winnerUserId === user?.id;
+    return drawDay.isSame(today) && status.lottery.winner_user_id === user?.id;
   }, [status, user]);
 
   useEffect(() => {
@@ -179,11 +179,11 @@ export default function ExploreScreen() {
               )}
             </View>
 
-            {status?.lottery?.winnerUserId ? (
+            {status?.lottery?.winner_user_id ? (
               <View style={styles.winnerSection}>
                 <ThemedText style={styles.winnerLabel}>中奖用户</ThemedText>
                 <ThemedText style={styles.winnerName}>
-                  {hasWon ? '恭喜你！' : `用户 #${status.lottery.winnerUserId}`}
+                  {hasWon ? '恭喜你！' : `用户 #${status.lottery.winner_user_id}`}
                 </ThemedText>
               </View>
             ) : (
