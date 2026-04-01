@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from alembic.config import Config
+from alembic import command
 from app.database import Base, engine
 from app import auth, lottery, post, profile, upload
 from app.scheduler import start_scheduler
@@ -9,6 +11,15 @@ from app.scheduler import start_scheduler
 load_dotenv()
 
 Base.metadata.create_all(bind=engine)
+
+def run_migrations():
+    alembic_cfg = Config("/app/alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+
+try:
+    run_migrations()
+except Exception:
+    pass
 
 scheduler = None
 
