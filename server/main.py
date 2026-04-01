@@ -14,9 +14,23 @@ Base.metadata.create_all(bind=engine)
 
 def run_migrations():
     import os
+    from sqlalchemy import text
     ini = os.path.join(os.path.dirname(__file__), "alembic.ini")
     alembic_cfg = Config(ini)
     alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "alembic"))
+
+    with engine.connect() as conn:
+        try:
+            result = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+            current = result.scalar()
+        except Exception:
+            current = None
+
+        if not current:
+            conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, PRIMARY KEY (version_num))"))
+            conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('741c3de4a7ff')"))
+            conn.commit()
+
     command.upgrade(alembic_cfg, "head")
 
 try:
