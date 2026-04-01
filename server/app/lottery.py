@@ -19,7 +19,7 @@ def status(db: Session = Depends(get_db)):
     start, end = today_range()
     lottery = db.query(models.Lottery).filter(models.Lottery.draw_date >= start, models.Lottery.draw_date < end).first()
     if lottery and lottery.winner_user_id:
-        deadline = lottery.draw_date + timedelta(days=2)
+        deadline = lottery.draw_date + timedelta(days=1, hours=18)
         deadline_iso = deadline.isoformat()
     else:
         deadline_iso = None

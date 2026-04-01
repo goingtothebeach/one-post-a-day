@@ -15,7 +15,7 @@ def get_post_window():
     """
     返回 (draw_date, deadline)
     draw_date: 本次抽签对应的日期零点
-    deadline: 允许发帖的截止时间（抽签日次日 24:00，即后天零点）
+    deadline: 允许发帖的截止时间（次日 18:00，即下一轮抽签开始前）
     规则：18:00 前看昨天的抽签；18:00 后看今天的抽签
     """
     now = datetime.now()
@@ -24,7 +24,7 @@ def get_post_window():
         draw_date = today - timedelta(days=1)
     else:
         draw_date = today
-    deadline = draw_date + timedelta(days=2)
+    deadline = draw_date + timedelta(days=1, hours=18)
     return draw_date, deadline
 
 @router.get("/feed")
