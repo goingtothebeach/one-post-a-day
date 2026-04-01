@@ -724,6 +724,7 @@ const styles = StyleSheet.create({
   inputText: {
     fontSize: typography.fontSize.base,
     color: colors.neutral[900],
+    ...(({ outline: 'none' }) as any),
   },
   inputDivider: {
     width: 1,
