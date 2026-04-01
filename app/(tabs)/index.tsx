@@ -166,14 +166,7 @@ export default function HomeScreen() {
       });
       
       if (res.ok) {
-        const data = await res.json();
         setCountdown(60);
-        if (data.code) {
-          // 开发模式，显示验证码
-          Alert.alert('验证码已发送', `开发模式验证码: ${data.code}`, [{ text: '知道了' }]);
-        } else {
-          Alert.alert('成功', '验证码已发送到您的手机', [{ text: '知道了' }]);
-        }
       } else {
         const data = await res.json();
         setLoginError(data.detail || '发送失败，请稍后重试');
@@ -343,7 +336,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
 
             <ThemedText style={styles.loginHint}>
-              💡 开发模式：验证码统一为 123456
+              登录即代表同意用户协议与隐私政策
             </ThemedText>
           </View>
         </View>
