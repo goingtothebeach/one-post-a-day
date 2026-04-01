@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import { Settings } from 'lucide-react-native';
 import dayjs from 'dayjs';
 import { DesignSystem } from '@/constants/design-system';
 import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
@@ -207,7 +208,7 @@ export default function ProfileScreen() {
             </View>
 
             <TouchableOpacity style={styles.settingsBtn} onPress={() => setSettingsVisible(true)}>
-              <ThemedText style={styles.settingsIcon}>⚙️</ThemedText>
+              <Settings size={18} color={colors.neutral[600]} strokeWidth={2} />
             </TouchableOpacity>
           </View>
 
@@ -482,9 +483,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: spacing[2],
   },
-  settingsIcon: {
-    fontSize: 16,
-  },
   avatarGradientBorder: {
     width: 64,
     height: 64,
@@ -557,11 +555,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: borderRadius['2xl'],
     borderTopRightRadius: borderRadius['2xl'],
     paddingTop: spacing[4],
+    paddingHorizontal: spacing[4],
     ...shadows.lg,
   },
   tabBar: {
     flexDirection: 'row',
-    paddingHorizontal: spacing[4],
     marginBottom: spacing[4],
     gap: spacing[3],
   },
@@ -583,7 +581,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeight.bold,
   },
   contentList: {
-    paddingHorizontal: spacing[4],
     paddingBottom: spacing[20],
   },
   contentRow: { gap: spacing[3], marginBottom: spacing[3] },
