@@ -261,7 +261,11 @@ export default function HomeScreen() {
   }, [feed, lottery]);
 
   if (!hydrated) {
-    return <ThemedView style={[styles.container, styles.center]} />;
+    return (
+      <ThemedView style={[styles.container, styles.center]}>
+        <ThemedText style={{ color: colors.neutral[400], fontSize: 14 }}>加载中...</ThemedText>
+      </ThemedView>
+    );
   }
 
   if (!token) {
