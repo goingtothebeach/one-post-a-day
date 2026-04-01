@@ -269,18 +269,15 @@ export default function HomeScreen() {
     }
     const deadline = dayjs(winnerDeadline);
     const tick = () => {
-      const diff = deadline.diff(dayjs(), 'second');
+      const diff = deadline.diff(dayjs(), 'hour');
       if (diff <= 0) {
         setPostCountdown('已截止');
         return;
       }
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      const s = diff % 60;
-      setPostCountdown(`${h > 0 ? `${h}小时` : ''}${m}分${s}秒`);
+      setPostCountdown(`${diff}小时`);
     };
     tick();
-    const timer = setInterval(tick, 1000);
+    const timer = setInterval(tick, 60000);
     return () => clearInterval(timer);
   }, [isWinnerToday, winnerDeadline]);
 
