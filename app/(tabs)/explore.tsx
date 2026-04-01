@@ -7,11 +7,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppInsets } from '@/hooks/use-app-insets';
 import { useMemo, useState, useEffect } from 'react';
 import { FlatList, StyleSheet, TouchableOpacity, View, StatusBar } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import dayjs from 'dayjs';
 import { DesignSystem } from '@/constants/design-system';
 
 const { colors, spacing, borderRadius, shadows, typography } = DesignSystem;
+
+const AVATAR_COLORS = ['#ff6b8e', '#a78bfa', '#34d399', '#60a5fa', '#f59e0b', '#f97316'];
+function avatarColor(id: number) {
+  return AVATAR_COLORS[id % AVATAR_COLORS.length];
+}
 
 type LotteryStatus = {
   lottery?: {
@@ -21,7 +27,7 @@ type LotteryStatus = {
   } | null;
 };
 
-type TicketUser = { id: number; phone: string; name?: string | null };
+type TicketUser = { id: number; phone: string; name?: string | null; avatar?: string | null };
 
 type TicketItem = {
   id: number;
@@ -220,16 +226,22 @@ export default function ExploreScreen() {
           <ThemedText style={styles.participantsTitle}>👥 报名列表</ThemedText>
           <View style={styles.participantsGrid}>
             {tickets.slice(0, 12).map((ticket) => (
-              <View 
-                key={ticket.id} 
+              <View
+                key={ticket.id}
                 style={[
                   styles.participantAvatar,
                   ticket.user.id === user?.id && styles.participantAvatarHighlight
                 ]}
               >
-                <ThemedText style={styles.participantText}>
-                  {(ticket.user.name || ticket.user.phone || '?')[0].toUpperCase()}
-                </ThemedText>
+                {ticket.user.avatar ? (
+                  <Image
+                    source={{ uri: ticket.user.avatar }}
+                    style={styles.participantImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.participantImage, { backgroundColor: avatarColor(ticket.user.id) }]} />
+                )}
               </View>
             ))}
             {tickets.length > 12 && (
@@ -455,9 +467,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: colors.primary[100],
-    justifyContent: 'center',
-    alignItems: 'center',
+    overflow: 'hidden',
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -465,10 +475,10 @@ const styles = StyleSheet.create({
     borderColor: colors.primary[500],
     ...shadows.colored.pink,
   },
-  participantText: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary[600],
+  participantImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 26,
   },
   participantMore: {
     width: 52,

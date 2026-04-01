@@ -35,7 +35,7 @@ def join(db: Session = Depends(get_db), user=Depends(get_current_user)):
 def get_tickets(db: Session = Depends(get_db)):
     start, end = today_range()
     tickets = db.query(models.Ticket).filter(models.Ticket.draw_date >= start, models.Ticket.draw_date < end).all()
-    return {"tickets": [{"id": t.id, "user": t.user} for t in tickets]}
+    return {"tickets": [{"id": t.id, "user": {"id": t.user.id, "phone": t.user.phone, "name": t.user.name, "avatar": t.user.avatar}} for t in tickets]}
 
 @router.post("/run")
 def run(db: Session = Depends(get_db)):
