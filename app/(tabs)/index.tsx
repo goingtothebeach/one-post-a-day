@@ -232,19 +232,26 @@ export default function HomeScreen() {
 
   const createPost = async () => {
     if (!token) return;
-    const res = await fetch(`${API_BASE}/post`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ title, content, mediaUrl, mediaWidth, mediaHeight, images }),
-    });
-    if (res.ok) {
-      setTitle('');
-      setContent('');
-      setMediaUrl('');
-      setMediaWidth(undefined);
-      setMediaHeight(undefined);
-      setImages([]);
-      loadFeed();
+    try {
+      const res = await fetch(`${API_BASE}/post`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ title, content, mediaUrl, mediaWidth, mediaHeight, images }),
+      });
+      if (res.ok) {
+        setTitle('');
+        setContent('');
+        setMediaUrl('');
+        setMediaWidth(undefined);
+        setMediaHeight(undefined);
+        setImages([]);
+        loadFeed();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        Alert.alert('发帖失败', `${res.status}: ${data.detail || '未知错误'}`);
+      }
+    } catch (e: any) {
+      Alert.alert('发帖失败', e?.message || '网络错误');
     }
   };
 
