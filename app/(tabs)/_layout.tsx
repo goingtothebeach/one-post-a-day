@@ -9,8 +9,8 @@ import { DesignSystem } from '@/constants/design-system';
 const { colors } = DesignSystem;
 
 export default function TabLayout() {
-  const { token, user } = useAuth();
-  const authed = Boolean(token && user?.id);
+  const { token, user, hydrated } = useAuth();
+  const authed = hydrated && Boolean(token && user?.id);
 
   const screenOptions = {
     tabBarActiveTintColor: colors.primary[600],
@@ -73,61 +73,32 @@ export default function TabLayout() {
         options={{
           title: '首页',
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
-              size={focused ? 30 : 28} 
-              name="house.fill" 
-              color={color} 
-            />
+            <IconSymbol size={focused ? 30 : 28} name="house.fill" color={color} />
           ),
         }}
       />
-      {authed ? (
-        <Tabs.Screen
-          name="explore"
-          options={{
-            title: '抽签',
-            tabBarIcon: ({ color, focused }) => (
-              <IconSymbol 
-                size={focused ? 30 : 28} 
-                name="ticket.fill" 
-                color={color} 
-              />
-            ),
-          }}
-        />
-      ) : (
-        <Tabs.Screen name="explore" options={{ href: null }} />
-      )}
-      {authed ? (
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: '我的',
-            tabBarIcon: ({ color, focused }) => (
-              <IconSymbol 
-                size={focused ? 30 : 28} 
-                name="person.crop.circle.fill" 
-                color={color} 
-              />
-            ),
-          }}
-        />
-      ) : (
-        <Tabs.Screen name="profile" options={{ href: null }} />
-      )}
       <Tabs.Screen
-        name="image"
+        name="explore"
         options={{
-          href: null,
-          tabBarStyle: { display: 'none' },
+          title: '抽签',
+          href: authed ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol size={focused ? 30 : 28} name="ticket.fill" color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="api"
+        name="profile"
         options={{
-          href: null,
+          title: '我的',
+          href: authed ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol size={focused ? 30 : 28} name="person.crop.circle.fill" color={color} />
+          ),
         }}
       />
+      <Tabs.Screen name="image" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="api" options={{ href: null }} />
     </Tabs>
   );
 }
