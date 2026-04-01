@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { useSafeAreaInsets as useRNSafeAreaInsets } from 'react-native-safe-area-context';
 
-const WEB_TOP_PADDING = 56;
+const WEB_TOP_PADDING = 28;
 
 export function useAppInsets() {
   const insets = useRNSafeAreaInsets();
