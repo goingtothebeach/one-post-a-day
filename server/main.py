@@ -13,13 +13,16 @@ load_dotenv()
 Base.metadata.create_all(bind=engine)
 
 def run_migrations():
-    alembic_cfg = Config("/app/alembic.ini")
+    import os
+    ini = os.path.join(os.path.dirname(__file__), "alembic.ini")
+    alembic_cfg = Config(ini)
+    alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "alembic"))
     command.upgrade(alembic_cfg, "head")
 
 try:
     run_migrations()
-except Exception:
-    pass
+except Exception as e:
+    print(f"Migration warning: {e}")
 
 scheduler = None
 
