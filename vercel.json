@@ -2,38 +2,28 @@
   "version": 2,
   "buildCommand": "",
   "outputDirectory": "dist",
-  "rewrites": [
-    {
-      "source": "/((?!_expo/|assets/|MaterialIcons\\.ttf|favicon\\.ico).*)",
-      "destination": "/index.html"
-    }
+  "routes": [
+    { "src": "/_expo/(.*)", "dest": "/_expo/$1" },
+    { "src": "/assets/(.*)", "dest": "/assets/$1" },
+    { "src": "/MaterialIcons\\.ttf", "dest": "/MaterialIcons.ttf" },
+    { "src": "/favicon\\.ico", "dest": "/favicon.ico" },
+    { "src": "/explore", "dest": "/explore.html" },
+    { "src": "/profile", "dest": "/profile.html" },
+    { "src": "/modal", "dest": "/modal.html" },
+    { "src": "/image", "dest": "/image.html" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ],
   "headers": [
     {
       "source": "/_expo/static/(.*)",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
-      ]
-    },
-    {
-      "source": "/MaterialIcons.ttf",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     }
   ]
