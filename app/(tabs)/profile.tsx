@@ -33,8 +33,14 @@ type ProfileData = {
 type TabKey = 'likes' | 'favorites';
 
 export default function ProfileScreen() {
-  const { user, token, setAuth, logout } = useAuth();
+  const { user, token, setAuth, logout, hydrated } = useAuth();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (hydrated && !token) {
+      router.replace('/');
+    }
+  }, [hydrated, token]);
   const [tickets, setTickets] = useState<TicketHistory[]>([]);
   const [profileData, setProfileData] = useState<ProfileData>({ likes: [], favorites: [] });
   const [activeTab, setActiveTab] = useState<TabKey>('likes');

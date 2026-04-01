@@ -28,8 +28,14 @@ type TicketItem = {
 };
 
 export default function ExploreScreen() {
-  const { token, user } = useAuth();
+  const { token, user, hydrated } = useAuth();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (hydrated && !token) {
+      router.replace('/');
+    }
+  }, [hydrated, token]);
   const [status, setStatus] = useState<LotteryStatus | null>(null);
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [loading, setLoading] = useState(false);
