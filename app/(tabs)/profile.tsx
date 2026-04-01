@@ -180,13 +180,8 @@ export default function ProfileScreen() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          {/* 设置按钮 */}
-          <TouchableOpacity style={styles.settingsBtn} onPress={() => setSettingsVisible(true)}>
-            <ThemedText style={styles.settingsIcon}>⚙️</ThemedText>
-          </TouchableOpacity>
-
-          {/* 头像区域 */}
-          <View style={styles.avatarContainer}>
+          {/* 顶部：头像 + 信息 + 设置 */}
+          <View style={styles.profileTop}>
             <LinearGradient
               colors={[colors.primary[400], colors.primary[600]]}
               style={styles.avatarGradientBorder}
@@ -203,10 +198,18 @@ export default function ProfileScreen() {
                 )}
               </View>
             </LinearGradient>
-          </View>
 
-          <ThemedText style={styles.userName}>{user?.name || user?.phone}</ThemedText>
-          <ThemedText style={styles.userBio}>分享生活，记录美好瞬间 ✨</ThemedText>
+            <View style={styles.profileInfo}>
+              <ThemedText style={styles.userName} numberOfLines={1}>
+                {user?.name || user?.phone}
+              </ThemedText>
+              <ThemedText style={styles.userId}>ID: {user?.id}</ThemedText>
+            </View>
+
+            <TouchableOpacity style={styles.settingsBtn} onPress={() => setSettingsVisible(true)}>
+              <ThemedText style={styles.settingsIcon}>⚙️</ThemedText>
+            </TouchableOpacity>
+          </View>
 
           {/* 统计数据 */}
           <View style={styles.statsRow}>
@@ -453,44 +456,46 @@ const styles = StyleSheet.create({
   },
 
   profileCard: {
-    margin: spacing[4],
+    marginHorizontal: spacing[4],
+    marginTop: spacing[3],
     marginBottom: spacing[3],
     borderRadius: borderRadius.xl,
     overflow: 'hidden',
     ...shadows.md,
   },
   profileGradient: {
-    padding: spacing[6],
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[5],
+    paddingBottom: spacing[4],
+  },
+  profileTop: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: spacing[4],
   },
   settingsBtn: {
-    position: 'absolute',
-    top: spacing[4],
-    right: spacing[4],
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: 'rgba(255,255,255,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: spacing[2],
   },
   settingsIcon: {
-    fontSize: 18,
-  },
-  avatarContainer: {
-    marginBottom: spacing[4],
-    marginTop: spacing[2],
+    fontSize: 16,
   },
   avatarGradientBorder: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    padding: 3,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    padding: 2.5,
+    flexShrink: 0,
   },
   avatarInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 45,
+    borderRadius: 30,
     backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
@@ -501,43 +506,48 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   avatarText: {
-    fontSize: typography.fontSize['4xl'],
+    fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.primary[600],
   },
+  profileInfo: {
+    flex: 1,
+    marginLeft: spacing[4],
+    justifyContent: 'center',
+  },
   userName: {
-    fontSize: typography.fontSize['2xl'],
+    fontSize: typography.fontSize.xl,
     fontWeight: typography.fontWeight.bold,
     color: colors.neutral[900],
-    marginBottom: spacing[2],
+    marginBottom: spacing[1],
   },
-  userBio: {
-    fontSize: typography.fontSize.base,
-    color: colors.neutral[600],
-    marginBottom: spacing[6],
+  userId: {
+    fontSize: typography.fontSize.xs,
+    color: colors.neutral[500],
+    fontWeight: typography.fontWeight.normal,
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderRadius: borderRadius.lg,
-    padding: spacing[4],
-    width: '100%',
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[2],
   },
   statItem: { flex: 1, alignItems: 'center' },
   statValue: {
-    fontSize: typography.fontSize['3xl'],
+    fontSize: typography.fontSize['2xl'],
     fontWeight: typography.fontWeight.bold,
     color: colors.primary[600],
-    marginBottom: spacing[1],
+    marginBottom: 2,
   },
   statLabel: {
     fontSize: typography.fontSize.xs,
-    color: colors.neutral[600],
+    color: colors.neutral[500],
   },
   statDivider: {
     width: 1,
-    height: 40,
+    height: 32,
     backgroundColor: colors.neutral[200],
   },
 
