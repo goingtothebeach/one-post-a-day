@@ -11,7 +11,7 @@ router = APIRouter(prefix="/post", tags=["post"])
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 
 def now_shanghai():
-    return datetime.now(SHANGHAI)
+    return datetime.now(SHANGHAI).replace(tzinfo=None)
 
 def today_start():
     now = now_shanghai()

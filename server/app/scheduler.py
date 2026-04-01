@@ -9,7 +9,7 @@ from . import models
 SHANGHAI = ZoneInfo('Asia/Shanghai')
 
 def now_shanghai():
-    return datetime.now(SHANGHAI)
+    return datetime.now(SHANGHAI).replace(tzinfo=None)
 
 def today_range():
     now = now_shanghai()
