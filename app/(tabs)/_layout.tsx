@@ -75,7 +75,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <IconSymbol 
               size={focused ? 30 : 28} 
-              name={focused ? "house.fill" : "house"} 
+              name="house.fill" 
               color={color} 
             />
           ),
@@ -89,7 +89,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <IconSymbol 
                 size={focused ? 30 : 28} 
-                name={focused ? "ticket.fill" : "ticket"} 
+                name="ticket.fill" 
                 color={color} 
               />
             ),
@@ -106,7 +106,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <IconSymbol 
                 size={focused ? 30 : 28} 
-                name={focused ? "person.crop.circle.fill" : "person.crop.circle"} 
+                name="person.crop.circle.fill" 
                 color={color} 
               />
             ),
