@@ -14,6 +14,21 @@ def today_range():
     end = start + timedelta(days=1)
     return start, end
 
+def next_draw_range():
+    """
+    返回下一轮抽签对应的 (start, end)
+    18:00 前 → 今天的抽签
+    18:00 后 → 明天的抽签
+    """
+    now = datetime.now()
+    today = datetime(now.year, now.month, now.day)
+    if now.hour < 18:
+        start = today
+    else:
+        start = today + timedelta(days=1)
+    end = start + timedelta(days=1)
+    return start, end
+
 @router.get("/today/status")
 def status(db: Session = Depends(get_db)):
     start, end = today_range()
@@ -27,20 +42,27 @@ def status(db: Session = Depends(get_db)):
 
 @router.post("/join")
 def join(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    start, end = today_range()
-    existing = db.query(models.Ticket).filter(models.Ticket.user_id == user.id, models.Ticket.draw_date >= start, models.Ticket.draw_date < end).first()
+    start, end = next_draw_range()
+    existing = db.query(models.Ticket).filter(
+        models.Ticket.user_id == user.id,
+        models.Ticket.draw_date >= start,
+        models.Ticket.draw_date < end
+    ).first()
     if existing:
         raise HTTPException(status_code=400, detail="already joined")
     ticket = models.Ticket(user_id=user.id, draw_date=start)
     db.add(ticket)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "draw_date": start.isoformat()}
 
 @router.get("/tickets")
 def get_tickets(db: Session = Depends(get_db)):
-    start, end = today_range()
+    start, end = next_draw_range()
     tickets = db.query(models.Ticket).filter(models.Ticket.draw_date >= start, models.Ticket.draw_date < end).all()
-    return {"tickets": [{"id": t.id, "user": {"id": t.user.id, "phone": t.user.phone, "name": t.user.name, "avatar": t.user.avatar}} for t in tickets]}
+    return {
+        "tickets": [{"id": t.id, "user": {"id": t.user.id, "phone": t.user.phone, "name": t.user.name, "avatar": t.user.avatar}} for t in tickets],
+        "draw_date": start.isoformat(),
+    }
 
 @router.post("/run")
 def run(db: Session = Depends(get_db)):

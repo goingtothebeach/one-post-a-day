@@ -50,6 +50,7 @@ export default function ExploreScreen() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState('');
   const [postCountdown, setPostCountdown] = useState('');
+  const [nextDrawDate, setNextDrawDate] = useState<string | null>(null);
 
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -66,6 +67,7 @@ export default function ExploreScreen() {
     const res = await fetch(`${API_BASE}/lottery/tickets`, { headers });
     const data = await res.json();
     setTickets(data.tickets || []);
+    setNextDrawDate(data.draw_date || null);
   };
 
   const hasWon = useMemo(() => {
@@ -96,6 +98,11 @@ export default function ExploreScreen() {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [hasWon, status?.winner_deadline]);
+
+  const isNextDrawTomorrow = useMemo(() => {
+    if (!nextDrawDate) return false;
+    return dayjs(nextDrawDate).startOf('day').isAfter(dayjs().startOf('day'));
+  }, [nextDrawDate]);
 
   const hasJoined = useMemo(() => {
     if (!token || !tickets.length) return false;
@@ -145,7 +152,9 @@ export default function ExploreScreen() {
       {/* 页面标题 */}
       <View style={styles.header}>
         <ThemedText style={styles.headerTitle}>🎫 今日抽签</ThemedText>
-        <ThemedText style={styles.headerSubtitle}>每晚18:00抽签，获胜者次日独家发帖</ThemedText>
+        <ThemedText style={styles.headerSubtitle}>
+          {isNextDrawTomorrow ? '已报名将参与明日18:00抽签' : '每晚18:00抽签，获胜者独家发帖'}
+        </ThemedText>
       </View>
 
       {/* 抽签状态卡片 */}
@@ -225,7 +234,9 @@ export default function ExploreScreen() {
 
       {hasJoined && !hasWon && (
         <View style={styles.joinedBadge}>
-          <ThemedText style={styles.joinedText}>✓ 已报名，祝你好运！</ThemedText>
+          <ThemedText style={styles.joinedText}>
+            {isNextDrawTomorrow ? '✓ 已报名明日抽签，祝你好运！' : '✓ 已报名，祝你好运！'}
+          </ThemedText>
         </View>
       )}
 
