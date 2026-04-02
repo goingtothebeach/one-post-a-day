@@ -66,6 +66,7 @@ class PostStat(BaseModel):
     favorites_count: int
     is_liked: bool
     is_favorited: bool
+    images: List[PostImageOut] = []
 
 class ProfileContentResponse(BaseModel):
     likes: List[PostStat]

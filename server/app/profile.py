@@ -57,6 +57,7 @@ def profile_content(db: Session = Depends(get_db), user=Depends(get_current_user
         favorites_count = row[2]
         is_liked = db.query(models.PostLike).filter(models.PostLike.post_id == post.id, models.PostLike.user_id == user.id).first() is not None
         is_favorited = db.query(models.PostFavorite).filter(models.PostFavorite.post_id == post.id, models.PostFavorite.user_id == user.id).first() is not None
+        images = db.query(models.PostImage).filter(models.PostImage.post_id == post.id).order_by(models.PostImage.sort).all()
         return {
             "id": post.id,
             "title": post.title,
@@ -66,6 +67,7 @@ def profile_content(db: Session = Depends(get_db), user=Depends(get_current_user
             "favorites_count": favorites_count,
             "is_liked": is_liked,
             "is_favorited": is_favorited,
+            "images": [{"url": img.url, "width": img.width, "height": img.height, "sort": img.sort} for img in images],
         }
 
     return {

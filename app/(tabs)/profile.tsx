@@ -37,8 +37,13 @@ type TicketHistory = {
 type Item = {
   id: number;
   title: string;
-  cover?: string | null;
-  date: string;
+  media_url?: string | null;
+  publish_date: string;
+  images?: { url: string; width?: number; height?: number; sort?: number }[];
+  likes_count: number;
+  favorites_count: number;
+  is_liked: boolean;
+  is_favorited: boolean;
 };
 
 type ProfileData = {
@@ -271,10 +276,14 @@ export default function ProfileScreen() {
           <FlatList
             data={listData}
             keyExtractor={(item) => String(item.id)}
-            renderItem={({ item }) => (
+            renderItem={({ item }) => {
+              const coverUrl = (item.images && item.images.length > 0)
+                ? item.images.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0))[0].url
+                : item.media_url;
+              return (
               <View style={styles.contentCard}>
-                {item.cover ? (
-                  <Image source={{ uri: item.cover }} style={styles.contentImage} />
+                {coverUrl ? (
+                  <Image source={{ uri: coverUrl }} style={styles.contentImage} contentFit="cover" />
                 ) : (
                   <View style={[styles.contentImage, styles.contentImagePlaceholder]}>
                     <ThemedText style={styles.placeholderIcon}>📷</ThemedText>
@@ -285,11 +294,12 @@ export default function ProfileScreen() {
                     {item.title}
                   </ThemedText>
                   <ThemedText style={styles.contentDate}>
-                    {dayjs(item.date).format('MM/DD')}
+                    {dayjs(item.publish_date).format('MM/DD')}
                   </ThemedText>
                 </View>
               </View>
-            )}
+              );
+            }}
             numColumns={2}
             columnWrapperStyle={styles.contentRow}
             contentContainerStyle={styles.contentList}
