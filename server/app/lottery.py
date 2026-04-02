@@ -38,6 +38,7 @@ def current_draw_range():
     return start, end
 
 
+def next_draw_range():
     """
     返回下一轮抽签对应的 (start, end)
     18:00 前 → 今天的抽签
