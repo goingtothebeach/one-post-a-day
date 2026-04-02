@@ -60,9 +60,12 @@ def status(db: Session = Depends(get_db)):
     if lottery and lottery.winner_user_id:
         deadline = lottery.draw_date + timedelta(days=1, hours=18)
         deadline_iso = deadline.isoformat()
+        winner = db.query(models.User).filter(models.User.id == lottery.winner_user_id).first()
+        winner_info = {"id": winner.id, "name": winner.name, "avatar": winner.avatar} if winner else None
     else:
         deadline_iso = None
-    return {"lottery": lottery, "winner_deadline": deadline_iso}
+        winner_info = None
+    return {"lottery": lottery, "winner_deadline": deadline_iso, "winner": winner_info}
 
 @router.post("/join")
 def join(db: Session = Depends(get_db), user=Depends(get_current_user)):

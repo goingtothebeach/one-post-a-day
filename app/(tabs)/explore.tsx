@@ -26,6 +26,7 @@ type LotteryStatus = {
     status: string;
   } | null;
   winner_deadline?: string | null;
+  winner?: { id: number; name?: string | null; avatar?: string | null } | null;
 };
 
 type TicketUser = { id: number; phone: string; name?: string | null; avatar?: string | null };
@@ -186,10 +187,34 @@ export default function ExploreScreen() {
 
             {status?.lottery?.winner_user_id ? (
               <View style={styles.winnerSection}>
-                <ThemedText style={styles.winnerLabel}>中奖用户</ThemedText>
-                <ThemedText style={styles.winnerName}>
-                  {hasWon ? '恭喜你！' : `用户 #${status.lottery.winner_user_id}`}
-                </ThemedText>
+                {hasWon && (
+                  <ThemedText style={styles.winnerCongrats}>🎉 恭喜你中签！</ThemedText>
+                )}
+                <View style={styles.winnerCard}>
+                  <View style={styles.winnerAvatarWrap}>
+                    {status.winner?.avatar ? (
+                      <Image source={{ uri: status.winner.avatar }} style={styles.winnerAvatar} contentFit="cover" />
+                    ) : (
+                      <View style={[styles.winnerAvatar, styles.winnerAvatarPlaceholder]}>
+                        <ThemedText style={styles.winnerAvatarInitial}>
+                          {(status.winner?.name || '?')[0].toUpperCase()}
+                        </ThemedText>
+                      </View>
+                    )}
+                    <LinearGradient
+                      colors={[colors.primary[400], colors.secondary[400]]}
+                      style={styles.winnerAvatarRing}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                  </View>
+                  <View style={styles.winnerInfo}>
+                    <ThemedText style={styles.winnerName}>
+                      {status.winner?.name || `用户 #${status.lottery.winner_user_id}`}
+                    </ThemedText>
+                    <ThemedText style={styles.winnerId}>ID · {status.lottery.winner_user_id}</ThemedText>
+                  </View>
+                </View>
               </View>
             ) : (
               <View style={styles.waitingSection}>
@@ -402,17 +427,66 @@ const styles = StyleSheet.create({
   },
   winnerSection: {
     alignItems: 'center',
-    paddingVertical: spacing[4],
+    paddingVertical: spacing[3],
+    gap: spacing[3],
   },
-  winnerLabel: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral[600],
-    marginBottom: spacing[2],
+  winnerCongrats: {
+    fontSize: typography.fontSize.base,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.primary[600],
+  },
+  winnerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: borderRadius.xl,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    gap: spacing[3],
+    width: '100%',
+  },
+  winnerAvatarWrap: {
+    position: 'relative',
+    width: 56,
+    height: 56,
+  },
+  winnerAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    position: 'absolute',
+    top: 2,
+    left: 2,
+  },
+  winnerAvatarPlaceholder: {
+    backgroundColor: colors.primary[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  winnerAvatarInitial: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary[600],
+  },
+  winnerAvatarRing: {
+    position: 'absolute',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    opacity: 0.6,
+  },
+  winnerInfo: {
+    flex: 1,
+    gap: spacing[1],
   },
   winnerName: {
-    fontSize: typography.fontSize['2xl'],
+    fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
     color: colors.neutral[900],
+  },
+  winnerId: {
+    fontSize: typography.fontSize.xs,
+    color: colors.neutral[500],
   },
   waitingSection: {
     alignItems: 'center',
