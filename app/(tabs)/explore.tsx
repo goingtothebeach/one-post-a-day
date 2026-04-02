@@ -203,7 +203,13 @@ export default function ExploreScreen() {
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
                 <ThemedText style={styles.infoLabel}>抽签时间</ThemedText>
-                <ThemedText style={styles.infoValue}>每晚 18:00</ThemedText>
+                <ThemedText style={styles.infoValue}>
+                  {status?.lottery?.draw_date
+                    ? dayjs(status.lottery.draw_date).format('MM/DD 18:00')
+                    : nextDrawDate
+                    ? dayjs(nextDrawDate).format('MM/DD 18:00')
+                    : '每晚 18:00'}
+                </ThemedText>
               </View>
               <View style={styles.infoItem}>
                 <ThemedText style={styles.infoLabel}>参与人数</ThemedText>
