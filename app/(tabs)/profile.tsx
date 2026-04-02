@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { Settings } from 'lucide-react-native';
+import { Settings, Heart, Bookmark } from 'lucide-react-native';
 import dayjs from 'dayjs';
 import { DesignSystem } from '@/constants/design-system';
 import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
@@ -241,16 +241,28 @@ export default function ProfileScreen() {
             style={[styles.tab, activeTab === 'likes' && styles.tabActive]}
             onPress={() => setActiveTab('likes')}
           >
+            <Heart
+              size={14}
+              color={activeTab === 'likes' ? colors.primary[500] : colors.neutral[500]}
+              fill={activeTab === 'likes' ? colors.primary[500] : 'transparent'}
+              strokeWidth={2}
+            />
             <ThemedText style={[styles.tabText, activeTab === 'likes' && styles.tabTextActive]}>
-              ❤️ 赞过
+              赞过
             </ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'favorites' && styles.tabActive]}
             onPress={() => setActiveTab('favorites')}
           >
+            <Bookmark
+              size={14}
+              color={activeTab === 'favorites' ? colors.secondary[500] : colors.neutral[500]}
+              fill={activeTab === 'favorites' ? colors.secondary[500] : 'transparent'}
+              strokeWidth={2}
+            />
             <ThemedText style={[styles.tabText, activeTab === 'favorites' && styles.tabTextActive]}>
-              ⭐ 收藏
+              收藏
             </ThemedText>
           </TouchableOpacity>
         </View>
@@ -567,6 +579,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing[3],
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing[2],
     borderRadius: borderRadius.md,
     backgroundColor: colors.background.secondary,
   },

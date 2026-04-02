@@ -1,3 +1,4 @@
+import { Heart, Bookmark } from 'lucide-react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { DesignSystem } from '@/constants/design-system';
@@ -622,7 +623,12 @@ export default function HomeScreen() {
                       }
                     }}
                   >
-                    <ThemedText style={styles.actionIcon}>{item.is_liked ? '❤️' : '🤍'}</ThemedText>
+                    <Heart
+                        size={20}
+                        color={item.is_liked ? colors.primary[500] : colors.neutral[400]}
+                        fill={item.is_liked ? colors.primary[500] : 'transparent'}
+                        strokeWidth={2}
+                      />
                     <ThemedText style={styles.actionText}>{item.likes_count || 0}</ThemedText>
                   </TouchableOpacity>
 
@@ -638,7 +644,12 @@ export default function HomeScreen() {
                       }
                     }}
                   >
-                    <ThemedText style={styles.actionIcon}>{item.is_favorited ? '⭐' : '☆'}</ThemedText>
+                    <Bookmark
+                        size={20}
+                        color={item.is_favorited ? colors.secondary[500] : colors.neutral[400]}
+                        fill={item.is_favorited ? colors.secondary[500] : 'transparent'}
+                        strokeWidth={2}
+                      />
                     <ThemedText style={styles.actionText}>{item.favorites_count || 0}</ThemedText>
                   </TouchableOpacity>
                 </View>
