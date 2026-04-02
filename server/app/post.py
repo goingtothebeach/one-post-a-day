@@ -68,6 +68,12 @@ def feed(db: Session = Depends(get_db), user=Depends(get_current_user_optional))
         post_data = {
             "id": post.id,
             "author_id": post.author_id,
+            "author": {
+                "id": post.author.id,
+                "phone": post.author.phone,
+                "name": post.author.name,
+                "avatar": post.author.avatar,
+            },
             "title": post.title,
             "content": post.content,
             "media_url": post.media_url,

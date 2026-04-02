@@ -491,11 +491,15 @@ export default function HomeScreen() {
                 {/* 头部 */}
                 <View style={styles.feedHeader}>
                   <View style={styles.feedHeaderLeft}>
-                    <View style={styles.avatar}>
-                      <ThemedText style={styles.avatarText}>
-                        {(item.author?.name || item.author?.phone || '?')[0].toUpperCase()}
-                      </ThemedText>
-                    </View>
+                    {item.author?.avatar ? (
+                      <Image source={{ uri: item.author.avatar }} style={styles.avatarImage} contentFit="cover" />
+                    ) : (
+                      <View style={styles.avatar}>
+                        <ThemedText style={styles.avatarText}>
+                          {(item.author?.name || item.author?.phone || '?')[0].toUpperCase()}
+                        </ThemedText>
+                      </View>
+                    )}
                     <View style={styles.feedHeaderInfo}>
                       <ThemedText style={styles.authorName}>
                         {item.author?.name || item.author?.phone || '匿名用户'}
@@ -910,6 +914,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary[100],
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   avatarText: {
     fontSize: typography.fontSize.lg,
