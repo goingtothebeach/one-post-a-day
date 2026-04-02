@@ -113,18 +113,23 @@ export default function ExploreScreen() {
     }
     setError('');
     setJoining(true);
-    const res = await fetch(`${API_BASE}/lottery/join`, { method: 'POST', headers });
-    if (res.status === 401) {
-      setError('登录已失效，请重新登录');
-      router.replace('/');
-    } else if (!res.ok) {
-      const data = await res.json();
-      setError(data.detail || '报名失败，请稍后再试');
-    } else {
-      await loadStatus();
-      await loadTickets();
+    try {
+      const res = await fetch(`${API_BASE}/lottery/join`, { method: 'POST', headers });
+      if (res.status === 401) {
+        setError('登录已失效，请重新登录');
+        router.replace('/');
+      } else if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(`${res.status}: ${data.detail || '报名失败，请稍后再试'}`);
+      } else {
+        await loadStatus();
+        await loadTickets();
+      }
+    } catch (e: any) {
+      setError(`网络错误: ${e?.message || '请检查网络连接'}`);
+    } finally {
+      setJoining(false);
     }
-    setJoining(false);
   };
 
   const runDraw = async () => {
