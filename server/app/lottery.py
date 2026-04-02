@@ -65,18 +65,25 @@ def status(db: Session = Depends(get_db)):
 
 @router.post("/join")
 def join(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    start, end = next_draw_range()
-    existing = db.query(models.Ticket).filter(
-        models.Ticket.user_id == user.id,
-        models.Ticket.draw_date >= start,
-        models.Ticket.draw_date < end
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="already joined")
-    ticket = models.Ticket(user_id=user.id, draw_date=start)
-    db.add(ticket)
-    db.commit()
-    return {"ok": True, "draw_date": start.isoformat()}
+    import traceback
+    try:
+        start, end = next_draw_range()
+        existing = db.query(models.Ticket).filter(
+            models.Ticket.user_id == user.id,
+            models.Ticket.draw_date >= start,
+            models.Ticket.draw_date < end
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="already joined")
+        ticket = models.Ticket(user_id=user.id, draw_date=start)
+        db.add(ticket)
+        db.commit()
+        return {"ok": True, "draw_date": start.isoformat()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[JOIN ERROR] {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/tickets")
 def get_tickets(db: Session = Depends(get_db)):
