@@ -2,7 +2,7 @@
 
 **最后更新**: 2026-04-10  
 **项目状态**: 前后端均已上线，持续迭代中  
-**GitHub**: https://github.com/owenandveronica/one-post-a-day.git  
+**GitHub**: https://github.com/goingtothebeach/one-post-a-day.git  
 **前端地址**: https://onedayapost.fun  
 **后端地址**: https://api.onedayapost.fun（待部署；Railway 旧部署已删除）
 

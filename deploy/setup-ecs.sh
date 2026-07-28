@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/owenandveronica/one-post-a-day.git}"
+REPO="${REPO:-https://github.com/goingtothebeach/one-post-a-day.git}"
 BRANCH="${BRANCH:-main}"
 APP_DIR=/opt/onedayapost
 ENV_FILE=/etc/onedayapost.env
