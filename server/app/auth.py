@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import hmac
 import json
 import os
 import random
@@ -22,9 +23,13 @@ ALIYUN_SMS_SIGN_NAME = os.getenv("ALIYUN_SMS_SIGN_NAME", "")
 ALIYUN_SMS_TEMPLATE_CODE = os.getenv("ALIYUN_SMS_TEMPLATE_CODE", "")
 ALIYUN_SMS_SCHEME = os.getenv("ALIYUN_SMS_SCHEME", "")
 
-# 验证码存储: {phone: {code, expires, sent_at}}
+# 验证码存储: {phone: {code, expires, attempts}}
 OTP_STORE: dict[str, dict] = {}
 RATE_LIMIT: dict[str, datetime] = {}
+
+# 单个验证码最多允许猜几次。6 位数字码在 5 分钟有效期内若不限次数，
+# 可被暴力枚举从而登录任意手机号。
+MAX_OTP_ATTEMPTS = 5
 
 
 def _make_dypns_client():
@@ -105,6 +110,7 @@ def request_otp(payload: RequestOtpPayload):
     OTP_STORE[phone] = {
         "code": code,
         "expires": now + timedelta(minutes=5),
+        "attempts": 0,
     }
     RATE_LIMIT[phone] = now
 
@@ -125,7 +131,12 @@ def verify_otp(payload: VerifyPayload, db: Session = Depends(get_db)):
         del OTP_STORE[phone]
         raise HTTPException(status_code=400, detail="验证码已过期，请重新获取")
 
-    if code != stored["code"]:
+    if not hmac.compare_digest(code, stored["code"]):
+        # 猜错累计到上限就作废该验证码，必须重新获取，阻断暴力枚举
+        stored["attempts"] = stored.get("attempts", 0) + 1
+        if stored["attempts"] >= MAX_OTP_ATTEMPTS:
+            del OTP_STORE[phone]
+            raise HTTPException(status_code=429, detail="验证码错误次数过多，请重新获取")
         raise HTTPException(status_code=400, detail="验证码错误")
 
     del OTP_STORE[phone]

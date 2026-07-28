@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class UserOut(BaseModel):
     id: int
@@ -22,8 +22,9 @@ class PostImageIn(BaseModel):
     sort: Optional[int]
 
 class PostCreate(BaseModel):
-    title: str
-    content: str
+    # 长度上限与 DB 列宽（title 200 / content 2000）对齐，避免超长直接 500
+    title: str = Field(min_length=1, max_length=100)
+    content: str = Field(min_length=1, max_length=2000)
     mediaUrl: Optional[str] = None
     mediaWidth: Optional[int] = None
     mediaHeight: Optional[int] = None

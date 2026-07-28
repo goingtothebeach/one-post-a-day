@@ -26,6 +26,11 @@ class Session(Base):
 
 class Ticket(Base):
     __tablename__ = "tickets"
+    # 一人一轮只能有一张票。没有这个约束时 /join 的「先查后插」在并发下
+    # （双击、两台设备、客户端重试）会让同一个人拿到多张票；
+    # 若抽签按票随机，中签概率就被放大了。
+    __table_args__ = (UniqueConstraint('user_id', 'draw_date', name='uq_ticket_user_draw'),)
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     draw_date = Column(DateTime, index=True, nullable=False)
@@ -52,7 +57,9 @@ class Post(Base):
     media_url = Column(String(500))
     media_width = Column(Integer)
     media_height = Column(Integer)
-    publish_date = Column(DateTime, index=True, nullable=False)
+    # 「每天只有一个人能发帖」这条核心规则需要数据库兜底：
+    # 仅靠应用层「先查有没有再插」在并发/连点下会插进两帖。
+    publish_date = Column(DateTime, index=True, nullable=False, unique=True)
     created_at = Column(DateTime, server_default=func.now())
 
     author = relationship("User", back_populates="posts")

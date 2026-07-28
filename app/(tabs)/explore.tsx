@@ -11,6 +11,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import dayjs from 'dayjs';
 import { DesignSystem } from '@/constants/design-system';
+import { formatCountdown } from '../lib/countdown';
 
 const { colors, spacing, borderRadius, shadows, typography } = DesignSystem;
 
@@ -27,9 +28,12 @@ type LotteryStatus = {
   } | null;
   winner_deadline?: string | null;
   winner?: { id: number; name?: string | null; avatar?: string | null } | null;
+  is_winner?: boolean;
+  can_post?: boolean;
 };
 
-type TicketUser = { id: number; phone: string; name?: string | null; avatar?: string | null };
+// 后端不再下发 phone（报名列表所有登录用户可见，无需暴露手机号）
+type TicketUser = { id: number; name?: string | null; avatar?: string | null };
 
 type TicketItem = {
   id: number;
@@ -53,47 +57,52 @@ export default function ExploreScreen() {
   const [postCountdown, setPostCountdown] = useState('');
   const [nextDrawDate, setNextDrawDate] = useState<string | null>(null);
 
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const headers = useMemo<Record<string, string>>(
+    () => (token ? { Authorization: `Bearer ${token}` } : ({} as Record<string, string>)),
+    [token]
+  );
 
   const loadStatus = async () => {
     setLoading(true);
-    const res = await fetch(`${API_BASE}/lottery/today/status`);
-    const data = await res.json();
-    setStatus(data);
-    setLoading(false);
+    try {
+      // 必须带 token：is_winner / can_post 是后端按当前用户算的
+      const res = await fetch(`${API_BASE}/lottery/today/status`, { headers });
+      if (res.ok) setStatus(await res.json());
+      else setError('抽签状态加载失败，请下拉重试');
+    } catch (e: any) {
+      setError(`网络错误: ${e?.message || '请检查网络连接'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadTickets = async () => {
     if (!token) return;
-    const res = await fetch(`${API_BASE}/lottery/tickets`, { headers });
-    const data = await res.json();
-    setTickets(data.tickets || []);
-    setNextDrawDate(data.draw_date || null);
+    try {
+      const res = await fetch(`${API_BASE}/lottery/tickets`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      setTickets(data.tickets || []);
+      setNextDrawDate(data.draw_date || null);
+    } catch (e) {
+      // 报名列表拉不到不阻塞主流程，静默失败
+    }
   };
 
-  const hasWon = useMemo(() => {
-    if (!status?.lottery) return false;
-    const drawDay = dayjs(status.lottery.draw_date).startOf('day');
-    const today = dayjs().startOf('day');
-    return drawDay.isSame(today) && status.lottery.winner_user_id === user?.id;
-  }, [status, user]);
+  // 中签态直接用后端下发的 is_winner。
+  // 不能再拿 draw_date 和「今天」比：/today/status 在 18:00 前返回的是【前一天】那轮，
+  // 那样比较会让中签者在自己发帖窗口的 00:00-18:00 整段时间里「掉签」。
+  const hasWon = Boolean(status?.is_winner);
 
   useEffect(() => {
     if (!hasWon || !status?.winner_deadline) {
       setPostCountdown('');
       return;
     }
-    const deadline = dayjs(status.winner_deadline);
-    const tick = () => {
-      const diff = deadline.diff(dayjs(), 'hour');
-      if (diff <= 0) {
-        setPostCountdown('已截止');
-        return;
-      }
-      setPostCountdown(`${diff}小时`);
-    };
+    const tick = () => setPostCountdown(formatCountdown(status.winner_deadline) || '');
     tick();
-    const timer = setInterval(tick, 60000);
+    // 30 秒一跳：分钟级文案下 60 秒的间隔会明显滞后
+    const timer = setInterval(tick, 30000);
     return () => clearInterval(timer);
   }, [hasWon, status?.winner_deadline]);
 
@@ -133,15 +142,19 @@ export default function ExploreScreen() {
     }
   };
 
-  const runDraw = async () => {
-    await fetch(`${API_BASE}/lottery/run`, { method: 'POST' });
-    await loadStatus();
-    await loadTickets();
-  };
-
   useEffect(() => {
     loadStatus();
     if (token) loadTickets();
+  }, [token]);
+
+  // 轮次会在 18:00 翻转，页面可能一直挂着，定期重新拉状态和名单
+  useEffect(() => {
+    if (!token) return;
+    const timer = setInterval(() => {
+      loadStatus();
+      loadTickets();
+    }, 60000);
+    return () => clearInterval(timer);
   }, [token]);
 
   const goPost = () => {
@@ -156,7 +169,7 @@ export default function ExploreScreen() {
       <View style={styles.header}>
         <ThemedText style={styles.headerTitle}>🎫 今日抽签</ThemedText>
         <ThemedText style={styles.headerSubtitle}>
-          {isNextDrawTomorrow ? '已报名将参与明日18:00抽签' : '每晚18:00抽签，获胜者独家发帖'}
+          {isNextDrawTomorrow ? '当前报名参与明晚18:00抽签' : '每晚18:00抽签，中签者独家发帖'}
         </ThemedText>
       </View>
 
@@ -227,17 +240,17 @@ export default function ExploreScreen() {
 
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
-                <ThemedText style={styles.infoLabel}>抽签时间</ThemedText>
+                {/* 这里必须用 nextDrawDate（下一轮），不能用 status.lottery.draw_date：
+                    后者是「当前活跃轮次」，18:00 前指的是昨天那轮，
+                    而右边的「参与人数」统计的是下一轮的报名名单——
+                    两个数据来自不同轮次并列展示会让人误解。 */}
+                <ThemedText style={styles.infoLabel}>下次抽签</ThemedText>
                 <ThemedText style={styles.infoValue}>
-                  {status?.lottery?.draw_date
-                    ? dayjs(status.lottery.draw_date).format('MM/DD 18:00')
-                    : nextDrawDate
-                    ? dayjs(nextDrawDate).format('MM/DD 18:00')
-                    : '每晚 18:00'}
+                  {nextDrawDate ? dayjs(nextDrawDate).format('MM/DD 18:00') : '每晚 18:00'}
                 </ThemedText>
               </View>
               <View style={styles.infoItem}>
-                <ThemedText style={styles.infoLabel}>参与人数</ThemedText>
+                <ThemedText style={styles.infoLabel}>已报名人数</ThemedText>
                 <ThemedText style={styles.infoValue}>{tickets.length} 人</ThemedText>
               </View>
             </View>
@@ -245,30 +258,33 @@ export default function ExploreScreen() {
         </LinearGradient>
       </View>
 
-      {/* 参与按钮 */}
+      {/* 参与按钮。
+          注意不要用 hasWon 禁用它：hasWon 说的是【当前轮次】中签，
+          而这个按钮报名的是【下一轮】。本轮中签者当然可以报名下一轮，
+          之前用 hasWon 一禁，赢家在自己的发帖窗口里就错过了次日抽签的报名。 */}
       {token && !hasJoined && (
-        <TouchableOpacity 
-          style={styles.joinButton} 
+        <TouchableOpacity
+          style={styles.joinButton}
           onPress={joinLottery}
-          disabled={joining || hasWon}
+          disabled={joining}
         >
           <LinearGradient
-            colors={hasWon ? [colors.neutral[300], colors.neutral[400]] : [colors.primary[500], colors.primary[600]]}
+            colors={[colors.primary[500], colors.primary[600]]}
             style={styles.joinButtonGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
             <ThemedText style={styles.joinButtonText}>
-              {joining ? '报名中...' : hasWon ? '已获得发帖权' : '🎟️ 立即报名'}
+              {joining ? '报名中...' : isNextDrawTomorrow ? '🎟️ 报名明晚抽签' : '🎟️ 报名今晚抽签'}
             </ThemedText>
           </LinearGradient>
         </TouchableOpacity>
       )}
 
-      {hasJoined && !hasWon && (
+      {hasJoined && (
         <View style={styles.joinedBadge}>
           <ThemedText style={styles.joinedText}>
-            {isNextDrawTomorrow ? '✓ 已报名明日抽签，祝你好运！' : '✓ 已报名，祝你好运！'}
+            {isNextDrawTomorrow ? '✓ 已报名明晚抽签，祝你好运！' : '✓ 已报名今晚抽签，祝你好运！'}
           </ThemedText>
         </View>
       )}
@@ -318,7 +334,7 @@ export default function ExploreScreen() {
                 ) : (
                   <View style={[styles.participantPlaceholder, { backgroundColor: avatarColor(ticket.user.id) }]}>
                     <ThemedText style={styles.participantInitial}>
-                      {(ticket.user.name || ticket.user.phone || '?')[0].toUpperCase()}
+                      {(ticket.user.name || '?')[0].toUpperCase()}
                     </ThemedText>
                   </View>
                 )}
@@ -337,9 +353,10 @@ export default function ExploreScreen() {
       {__DEV__ && (
         <View style={styles.debugCard}>
           <ThemedText style={styles.debugTitle}>🛠️ 调试工具</ThemedText>
-          <TouchableOpacity style={styles.debugButton} onPress={runDraw}>
-            <ThemedText style={styles.debugButtonText}>手动触发抽签</ThemedText>
-          </TouchableOpacity>
+          {/* 手动触发抽签的按钮已移除：/lottery/run 需要 X-Cron-Secret，
+              裸调只会 403/503，而且线上不该存在任何前端可点的重抽入口。
+              本地要测抽签请用：
+              curl -X POST localhost:4000/lottery/run -H "X-Cron-Secret: $CRON_SECRET" */}
           <TouchableOpacity style={styles.debugButton} onPress={loadStatus}>
             <ThemedText style={styles.debugButtonText}>刷新状态</ThemedText>
           </TouchableOpacity>

@@ -1,75 +1,16 @@
-import random
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy.orm import Session
-from .database import SessionLocal
-from . import models
+"""已弃用 —— 请勿再启用。
 
-SHANGHAI = ZoneInfo('Asia/Shanghai')
+抽签统一由 GitHub Actions 的 cron 调 `POST /lottery/run` 触发，
+见 `.github/workflows/daily-lottery.yml` 与 `app/lottery.py:draw_round`。
 
-def now_shanghai():
-    return datetime.now(SHANGHAI).replace(tzinfo=None)
+历史问题：这里的 BackgroundScheduler 曾在 main.py 的 lifespan 里被启动，
+和 cron 同时在 18:00 抽签，两次抽出不同赢家、后一次覆写 winner_user_id，
+导致先中签并已发帖的人失去发帖权、新赢家又因 publish_date 已存在而发不出来。
+多实例部署时每个进程还会各跑一次，放大问题。
 
-def today_range():
-    now = now_shanghai()
-    start = datetime(now.year, now.month, now.day)
-    end = start + timedelta(days=1)
-    return start, end
-
-def run_daily_lottery():
-    """每天18:00运行抽奖"""
-    db: Session = SessionLocal()
-    try:
-        start, end = today_range()
-        tickets = db.query(models.Ticket).filter(
-            models.Ticket.draw_date >= start, 
-            models.Ticket.draw_date < end
-        ).all()
-        
-        if not tickets:
-            print(f"[{datetime.now()}] No tickets for lottery today")
-            return
-        
-        winner_ticket = random.choice(tickets)
-        lottery = db.query(models.Lottery).filter(
-            models.Lottery.draw_date >= start, 
-            models.Lottery.draw_date < end
-        ).first()
-        
-        if not lottery:
-            lottery = models.Lottery(
-                draw_date=start, 
-                winner_user_id=winner_ticket.user_id, 
-                status="completed"
-            )
-            db.add(lottery)
-        else:
-            lottery.winner_user_id = winner_ticket.user_id
-            lottery.status = "completed"
-        
-        db.commit()
-        print(f"[{datetime.now()}] Lottery completed. Winner: User {winner_ticket.user_id}")
-    except Exception as e:
-        print(f"[{datetime.now()}] Lottery error: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
-
-def start_scheduler():
-    """启动定时任务调度器"""
-    scheduler = BackgroundScheduler(timezone='Asia/Shanghai')
-    
-    # 每天18:00执行抽奖
-    scheduler.add_job(
-        run_daily_lottery,
-        trigger='cron',
-        hour=18,
-        minute=0,
-        id='daily_lottery',
-        replace_existing=True
-    )
-    
-    scheduler.start()
-    print(f"[{datetime.now()}] Scheduler started. Daily lottery at 18:00")
-    return scheduler
+如果将来要把定时任务收回进程内（例如迁到自建 ECS 后不想依赖 GitHub Actions），
+必须同时满足：
+  1. 只有单实例在跑，或用数据库锁 / 分布式锁保证全局只执行一次；
+  2. 复用 `app.lottery.draw_round()`（它是幂等的），不要再复制一份抽签逻辑；
+  3. 轮次用 `app.timewin.draw_date_for_run()` 判定，不要用「执行时刻的自然日」。
+"""

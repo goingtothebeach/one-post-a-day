@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppInsets } from '@/hooks/use-app-insets';
 import { API_BASE } from '../config/api';
 import { useAuth } from '../context/AuthContext';
+import { formatCountdown } from '../lib/countdown';
 import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
 
 const { colors, spacing, borderRadius, shadows, typography } = DesignSystem;
@@ -39,7 +40,7 @@ type FeedItem = {
   mediaWidth?: number | null;
   mediaHeight?: number | null;
   publishDate: string;
-  author?: { id: number; phone: string; name?: string | null } | null;
+  author?: { id: number; phone: string; name?: string | null; avatar?: string | null } | null;
   images?: { url: string; width?: number; height?: number; sort?: number }[];
   likes_count?: number;
   favorites_count?: number;
@@ -56,6 +57,8 @@ type LotteryStatus = {
 type LotteryResponse = {
   lottery: LotteryStatus;
   winner_deadline?: string | null;
+  is_winner?: boolean;
+  can_post?: boolean;
 };
 
 export default function HomeScreen() {
@@ -74,7 +77,9 @@ export default function HomeScreen() {
   const [activeMap, setActiveMap] = useState<Record<number, number>>({});
   const [lottery, setLottery] = useState<LotteryStatus>(null);
   const [winnerDeadline, setWinnerDeadline] = useState<string | null>(null);
+  const [canPost, setCanPost] = useState(false);
   const [postCountdown, setPostCountdown] = useState('');
+  const [publishing, setPublishing] = useState(false);
   
   // 登录相关状态
   const [countdown, setCountdown] = useState(0);
@@ -127,6 +132,7 @@ export default function HomeScreen() {
     const data: LotteryResponse = await res.json();
     setLottery(data?.lottery || null);
     setWinnerDeadline(data?.winner_deadline || null);
+    setCanPost(Boolean(data?.can_post));
   };
 
   useEffect(() => {
@@ -134,6 +140,15 @@ export default function HomeScreen() {
     loadFeed();
     loadLottery();
   }, [hydrated]);
+
+  // can_post / winner_deadline 都是后端按当前时刻算的，会随 18:00 边界翻转。
+  // 页面在浏览器里可能挂很久（放着过夜），必须定期重新拉，
+  // 否则表单会停留在上一轮的状态：过了截止还显示可发，或中签了却看不到入口。
+  useEffect(() => {
+    if (!hydrated) return;
+    const timer = setInterval(loadLottery, 60000);
+    return () => clearInterval(timer);
+  }, [hydrated, token]);
 
   // 倒计时效果
   useEffect(() => {
@@ -233,6 +248,12 @@ export default function HomeScreen() {
 
   const createPost = async () => {
     if (!token) return;
+    if (publishing) return; // 防连点：一天只能有一帖，重复提交会撞后端唯一约束
+    if (!title.trim() || !content.trim()) {
+      Alert.alert('发帖失败', '标题和内容都不能为空');
+      return;
+    }
+    setPublishing(true);
     try {
       const res = await fetch(`${API_BASE}/post`, {
         method: 'POST',
@@ -246,24 +267,22 @@ export default function HomeScreen() {
         setMediaWidth(undefined);
         setMediaHeight(undefined);
         setImages([]);
-        loadFeed();
+        await loadFeed();
+        await loadLottery(); // 刷新 can_post，发完就收起表单
       } else {
         const data = await res.json().catch(() => ({}));
         Alert.alert('发帖失败', `${res.status}: ${data.detail || '未知错误'}`);
       }
     } catch (e: any) {
       Alert.alert('发帖失败', e?.message || '网络错误');
+    } finally {
+      setPublishing(false);
     }
   };
 
-  const isWinnerToday = useMemo(() => {
-    if (!lottery || !lottery.winner_user_id) return false;
-    if (lottery.winner_user_id !== user?.id) return false;
-    if (!winnerDeadline) return false;
-    return dayjs().isBefore(dayjs(winnerDeadline));
-  }, [lottery, user, winnerDeadline]);
-
-  const canPostToday = isWinnerToday;
+  // 能否发帖完全由后端 can_post 决定（它同时校验了中签、窗口未过、当轮还没人发过）。
+  // 前端不要再自己算，否则两个 tab 会给出互相矛盾的结论。
+  const canPostToday = canPost;
   const hasTodayPost = useMemo(() => {
     if (!lottery) return false;
     const drawDay = dayjs(lottery.draw_date).startOf('day');
@@ -271,23 +290,15 @@ export default function HomeScreen() {
   }, [feed, lottery]);
 
   useEffect(() => {
-    if (!isWinnerToday || !winnerDeadline) {
+    if (!canPostToday || !winnerDeadline) {
       setPostCountdown('');
       return;
     }
-    const deadline = dayjs(winnerDeadline);
-    const tick = () => {
-      const diff = deadline.diff(dayjs(), 'hour');
-      if (diff <= 0) {
-        setPostCountdown('已截止');
-        return;
-      }
-      setPostCountdown(`${diff}小时`);
-    };
+    const tick = () => setPostCountdown(formatCountdown(winnerDeadline) || '');
     tick();
-    const timer = setInterval(tick, 60000);
+    const timer = setInterval(tick, 30000);
     return () => clearInterval(timer);
-  }, [isWinnerToday, winnerDeadline]);
+  }, [canPostToday, winnerDeadline]);
 
   if (!hydrated) {
     return (
@@ -409,6 +420,7 @@ export default function HomeScreen() {
               style={styles.postTitleInput}
               value={title}
               onChangeText={setTitle}
+              maxLength={100}
             />
 
             <TextInput
@@ -463,14 +475,22 @@ export default function HomeScreen() {
               </ThemedText>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.publishButton} onPress={createPost}>
+            <TouchableOpacity
+              style={styles.publishButton}
+              onPress={createPost}
+              disabled={publishing}
+            >
               <LinearGradient
-                colors={[colors.primary[500], colors.primary[600]]}
+                colors={publishing
+                  ? [colors.neutral[300], colors.neutral[400]]
+                  : [colors.primary[500], colors.primary[600]]}
                 style={styles.publishButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
-                <ThemedText style={styles.publishButtonText}>发布</ThemedText>
+                <ThemedText style={styles.publishButtonText}>
+                  {publishing ? '发布中...' : '发布'}
+                </ThemedText>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -660,7 +680,18 @@ export default function HomeScreen() {
               </View>
             );
           }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadFeed} tintColor={colors.primary[500]} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                // 抽签状态也要一起刷：否则页面挂着跨过 18:00 后，
+                // 下拉只更新了 feed，发帖入口/倒计时仍是上一轮的陈旧状态
+                loadFeed();
+                loadLottery();
+              }}
+              tintColor={colors.primary[500]}
+            />
+          }
           ListHeaderComponent={
             !hasTodayPost ? (
               <View style={styles.placeholderCard}>
@@ -668,7 +699,7 @@ export default function HomeScreen() {
                   <ThemedText style={styles.placeholderEmoji}>📝</ThemedText>
                 </View>
                 <ThemedText style={styles.placeholderTitle}>今日帖子尚未发布</ThemedText>
-                <ThemedText style={styles.placeholderText}>每天18:00抽签，幸运儿可发布次日唯一帖子</ThemedText>
+                <ThemedText style={styles.placeholderText}>每晚18:00抽签，中签者可发布当轮唯一帖子</ThemedText>
               </View>
             ) : null
           }
