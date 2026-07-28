@@ -4,7 +4,7 @@
 **项目状态**: 前后端均已上线，持续迭代中  
 **GitHub**: https://github.com/owenandveronica/one-post-a-day.git  
 **前端地址**: https://onedayapost.fun  
-**后端地址**: https://one-post-a-day-production.up.railway.app（待迁移到阿里云香港）
+**后端地址**: https://api.onedayapost.fun（阿里云香港 ECS；Railway 旧部署已删除）
 
 ---
 
@@ -21,9 +21,9 @@
 | 层 | 技术 | 部署 |
 |----|------|------|
 | 前端 | React Native + Expo（static export） | Vercel（https://onedayapost.fun） |
-| 后端 | FastAPI + SQLAlchemy | Railway（us-east4，待迁移） |
-| 数据库 | MySQL 8.0 | Railway 托管 |
-| 图片存储 | 阿里云 OSS | 北京区域 |
+| 后端 | FastAPI + SQLAlchemy | 阿里云香港 ECS（systemd + nginx 反代） |
+| 数据库 | MySQL 8.0 | ECS 本机自建 |
+| 图片存储 | 阿里云 OSS | 北京区域，bucket `onedayapost-media` |
 | 定时任务 | GitHub Actions（每天 UTC 10:00 = 北京 18:00） | GitHub |
 
 ---
@@ -185,13 +185,14 @@ cd server && uvicorn main:app --reload --port 4000
 
 ## 环境变量
 
-### Railway（后端）
+### 后端（ECS：/etc/onedayapost.env，权限 600）
 ```
 DATABASE_URL=mysql+pymysql://...
 JWT_SECRET=...
 CRON_SECRET=...
-ALIYUN_OSS_BUCKET=one-post-a-day
+ALIYUN_OSS_BUCKET=onedayapost-media   # 旧名 one-post-a-day 已被他人占用
 ALIYUN_OSS_ENDPOINT=oss-cn-beijing.aliyuncs.com
+CORS_ORIGINS=https://onedayapost.fun
 ALIYUN_ACCESS_KEY_ID=...
 ALIYUN_ACCESS_KEY_SECRET=...
 ALIYUN_OSS_ROLE_ARN=...   # 注意变量名是 OSS 不是 STS，代码读的是这个
@@ -199,9 +200,10 @@ ALIYUN_OSS_ROLE_ARN=...   # 注意变量名是 OSS 不是 STS，代码读的是�
 
 ### GitHub Actions Secrets
 ```
-RAILWAY_API_URL=https://one-post-a-day-production.up.railway.app
-CRON_SECRET=（与后端一致）
+API_BASE_URL=https://api.onedayapost.fun
+CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 ```
+（workflow 也兼容旧名 `RAILWAY_API_URL`，完整配置说明见 `server/.env.example`）
 
 ---
 
@@ -209,45 +211,57 @@ CRON_SECRET=（与后端一致）
 
 | 事项 | 状态 | 说明 |
 |------|------|------|
-| **轮换泄露的密钥** | **紧急** | `server/.env` 曾被提交进 git（commit `9332039`），含真实阿里云 AK/SK、DATABASE_URL、JWT_SECRET。已 `git rm --cached` 并加入 `.gitignore`，但**历史提交里仍在**，必须去阿里云控制台轮换 AK/SK、改数据库密码、换 JWT_SECRET |
-| 配置 `CRON_SECRET` | **必做** | `/lottery/run` 现在 fail-closed，线上环境变量没配会返回 503 导致抽签停摆。需同时配置 Railway/ECS 环境变量与 GitHub Actions Secrets 且两边一致 |
-| 上线迁移 `b7e2f4c81a03` | 待做 | 会先清理历史重复票/重复帖再加唯一约束。**上线前先跑核查 SQL**（见下） |
-| 迁移到阿里云香港 ECS | 待做 | Railway 在美东，延迟高，方案已规划 |
+| 开通「融合认证」 | **待做** | 短信的最后一步。RAM 权限已配好（自定义策略 `onedayapost-sms-verify`，仅授发/校验验证码），但号码认证服务未开启融合认证，接口返回 `code=UNKNOWN`。本地开发用 `DEV_FAKE_OTP=1` 不受影响 |
+| 部署到香港 ECS | **待做** | 部署资产已就绪（`deploy/`），见下方步骤 |
+| 删掉主账号 AK/SK | 建议 | 排查期间用主账号密钥调过 RAM/OSS API。现已改用子用户 `odau-customer-user`（最小权限），主账号密钥可以删了 |
 | 图片缓存 | 待做 | expo-image 加 `cachePolicy="memory-disk"` |
-| 历史数据修复 | 待做 | 时区修复前的两张票 draw_date 错误（存成了 April 2） |
 | sessions 表只写不读 | 待做 | `auth.py` 写入 session 但从不校验，logout 无法吊销 token（`deps.py` 只验 JWT 签名）。要支持强制下线需改成查库 |
 | OTP 存内存 | 待做 | `OTP_STORE`/`RATE_LIMIT` 是进程内 dict，重启即失效、多 worker 不共享（限流可被绕过）。多实例需换 Redis |
 | Feed 分页 | 部分完成 | 后端已支持 `?limit=&offset=`（默认 50、上限 100），前端还没接无限滚动 |
 
-### 上线迁移前的核查 SQL
-```sql
--- 是否存在同一人同一轮的重复票（迁移会保留 id 最小的那张）
-SELECT user_id, draw_date, COUNT(*) c FROM tickets
-GROUP BY user_id, draw_date HAVING c > 1;
-
--- 是否存在同一天的多篇帖子（迁移会保留 id 最小的那篇并删掉其余的图片/赞/藏）
-SELECT publish_date, COUNT(*) c FROM posts
-GROUP BY publish_date HAVING c > 1;
-```
-
 ---
 
-## 阿里云香港迁移方案
+## 部署到阿里云香港 ECS
 
-**背景**：Railway 服务器在美东（us-east4），API 延迟高（200-300ms），需迁移到香港（延迟约 30-50ms）。香港无需备案。
+**背景**：Railway 上的应用已删除（数据库随之丢失），前端仍在 Vercel。
+后端重新部署到阿里云香港：无需备案，延迟从 200-300ms 降到 30-50ms，
+且与 OSS 同属阿里云、计费集中。
 
-**步骤概览**：
-1. 购买阿里云香港 ECS 轻量应用服务器（2核2G，Ubuntu 22.04，约 24-30元/月）
-2. 服务器上安装 Python 3.11、MySQL、nginx、certbot
-3. 从 Railway 导出 MySQL dump，导入到 ECS 本地 MySQL
-4. 部署后端代码，配置 `.env`
-5. 用 systemd 管理 uvicorn 进程
-6. 配置 nginx 反向代理，在 DNS 添加 `api.onedayapost.fun` A 记录指向 ECS IP
-7. 申请 SSL 证书（`certbot --nginx`）
-8. 更新前端 `API_BASE` 和 GitHub Actions `RAILWAY_API_URL`
-9. 验证后停止 Railway
+**架构**：前端 Vercel（onedayapost.fun）→ 后端 ECS（api.onedayapost.fun）→ 本机 MySQL + 阿里云 OSS。
+⚠️ 与旧方案不同：**nginx 只反代 API，不再 serve 前端**（前端由 Vercel 托管）。
 
-**需要准备**：购买 ECS 后获取公网 IP，域名 DNS 在哪里管理（阿里云或其他）。
+### 部署资产
+| 文件 | 用途 |
+|------|------|
+| `deploy/setup-ecs.sh` | 服务器初始化脚本，幂等可重复运行 |
+| `deploy/api.nginx.conf` | nginx 反代配置（只代理 API） |
+| `deploy/onedayapost-api.service` | systemd 单元 |
+
+### 步骤
+1. 买阿里云**香港**轻量应用服务器（2核2G，Ubuntu 22.04，约 24-30 元/月）
+2. `scp deploy/setup-ecs.sh root@<公网IP>:~/ && ssh root@<公网IP> 'bash setup-ecs.sh'`
+   脚本会：装依赖 → 建库建用户（随机密码）→ 拉代码 → 装 Python 包 →
+   生成 `/etc/onedayapost.env`（随机 JWT/CRON_SECRET，权限 600）→ 注册 systemd → 配 nginx
+3. 编辑 `/etc/onedayapost.env`，把本地 `server/.env` 里的阿里云那几项抄进去
+4. `systemctl start onedayapost-api` && `curl localhost:4000/health`
+5. DNS 加 `api.onedayapost.fun` A 记录指向 ECS 公网 IP
+6. **解析生效后**再 `certbot --nginx -d api.onedayapost.fun`（顺序反了会签发失败）
+7. 安全组放行 80/443；**不要**放行 3306 和 4000
+8. GitHub Actions Secrets 配 `API_BASE_URL=https://api.onedayapost.fun` 和 `CRON_SECRET`
+   （与 `/etc/onedayapost.env` 里的值一致，否则抽签 503）
+9. 前端 `app/config/api.ts` 已指向 `api.onedayapost.fun`，重新构建并 push
+
+### 数据库是空的
+Railway 数据库已随应用删除，**没有历史数据要迁移**。这反而省掉两件麻烦事：
+不需要导出/导入 dump，也不需要跑清理重复数据的迁移。
+空库启动时 `main.py` 会检测到并直接 `stamp` 到 head（该路径已在真实 MySQL 上验证）。
+
+### 单 worker 的原因
+systemd 里 uvicorn 不加 `--workers`，因为：
+- `OTP_STORE` / `RATE_LIMIT` 是进程内 dict，多 worker 不共享，验证码限流会被绕过
+- alembic 迁移在启动时执行，多 worker 会并发跑同一份迁移
+
+要上多 worker，得先把这两个搬到 Redis。
 
 ---
 
@@ -286,6 +300,10 @@ one-post-a-day/
 │   ├── main.py             # FastAPI 入口
 │   └── requirements.txt
 ├── dist/                   # 前端构建产物（git 追踪）
+├── deploy/                 # 香港 ECS 部署资产
+│   ├── setup-ecs.sh        # 服务器初始化（幂等）
+│   ├── api.nginx.conf      # nginx 只反代 API
+│   └── onedayapost-api.service
 ├── .github/workflows/
 │   └── daily-lottery.yml   # 每日 18:00 抽签
 ├── vercel.json

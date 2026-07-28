@@ -10,7 +10,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger lottery
+        env:
+          # 后端已从 Railway 迁到阿里云香港。优先用 API_BASE_URL，
+          # 保留 RAILWAY_API_URL 兼容旧 Secret 名，避免忘改就直接失效。
+          API_BASE_URL: ${{ secrets.API_BASE_URL || secrets.RAILWAY_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -X POST "${{ secrets.RAILWAY_API_URL }}/lottery/run" \
-            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
-            -f --retry 3 --retry-delay 5
+          if [ -z "$API_BASE_URL" ]; then
+            echo "::error::未配置 API_BASE_URL（或 RAILWAY_API_URL）Secret"
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::未配置 CRON_SECRET Secret；后端 fail-closed 会返回 503"
+            exit 1
+          fi
+          # /lottery/run 是幂等的：该轮已开奖会直接返回既有赢家，重试不会重抽。
+          # 无人报名时返回 200 + winner=null，不会误报警。
+          # 不用 -f：它会把响应体丢掉，失败时看不到后端给的原因。
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            -X POST "$API_BASE_URL/lottery/run" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            --max-time 30)
+          echo "HTTP $code"
+          cat /tmp/resp.json || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::抽签调用失败，HTTP $code"
+            exit 1
+          fi

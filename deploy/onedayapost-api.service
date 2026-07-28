@@ -1,0 +1,41 @@
+[Unit]
+Description=One Post A Day API (FastAPI/uvicorn)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/onedayapost/server
+
+# 环境变量放在 /etc/onedayapost.env（不要放进代码目录，也不要提交进 git）
+# 内容参照 server/.env.example
+EnvironmentFile=/etc/onedayapost.env
+
+# 只监听回环地址：外部流量一律经 nginx（负责 TLS 与限流）
+ExecStart=/opt/onedayapost/venv/bin/uvicorn main:app --host 127.0.0.1 --port 4000
+
+# 单 worker：OTP_STORE / RATE_LIMIT 是进程内 dict，多 worker 不共享，
+# 验证码限流会被绕过。要上多 worker 必须先把这两个搬到 Redis。
+# 另外 alembic 迁移在启动时执行，多 worker 会并发跑同一份迁移。
+
+Restart=always
+RestartSec=3
+
+# 崩溃循环时不要无限重启
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=onedayapost-api
+
+# 基础加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
