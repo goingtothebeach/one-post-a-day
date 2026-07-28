@@ -129,6 +129,9 @@ def main() -> int:
                 hint(s[:150])
 
     # ---- 4. OSS bucket ----
+    # 判断依据必须是「匿名能不能读到一个对象」，而不是能不能列举 bucket。
+    # 列举需要 ListObject 权限，公开读的 bucket 匿名列举照样 403，
+    # 用列举来判断会把配置正常的 bucket 误报成异常。
     print("\n【4】OSS Bucket")
     if not bucket:
         line(SKIP, "跳过（未配置 bucket）")
@@ -136,23 +139,30 @@ def main() -> int:
         import urllib.error
         import urllib.request
 
-        url = f"https://{bucket}.{endpoint}/"
+        probe = f"https://{bucket}.{endpoint}/__health_probe_not_exist__"
         try:
-            with urllib.request.urlopen(url, timeout=12) as r:
-                line(OK, "存在且可公开读", f"HTTP {r.status}")
+            urllib.request.urlopen(probe, timeout=12)
+            line(OK, "可公开读")
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", "ignore")
             if "NoSuchBucket" in raw:
-                line(FAIL, "不存在", "需要先创建")
+                line(FAIL, "bucket 不存在", "需要先创建")
                 failures += 1
             elif "does not belong to you" in raw:
                 line(FAIL, "名字被其他账号占用", "必须改用别的名字")
                 failures += 1
-            elif e.code == 403:
-                line(FAIL, "存在但不可公开读", "feed 里的图会裂；把读写权限设为「公开读」")
+            elif "NoSuchKey" in raw:
+                # 能读到「对象不存在」= 匿名读权限正常，正是我们要的
+                line(OK, "存在且可公开读")
+            elif "bucket acl" in raw or e.code == 403:
+                line(FAIL, "不可公开读", "feed 里的图会裂")
                 failures += 1
+                hint("先看读写权限是否为「公开读」。")
+                hint("若 ACL 已是 public-read 仍 403，是「阻止公共访问」开着——")
+                hint("它会盖过 ACL，此时改 ACL 会报 'Put public bucket acl is not allowed'。")
+                hint("去 Bucket → 数据安全 → 阻止公共访问，关掉它。")
             else:
-                line(FAIL, f"HTTP {e.code}")
+                line(FAIL, f"HTTP {e.code}", raw[:100])
                 failures += 1
         except Exception as e:
             line(FAIL, "无法访问", str(e)[:120])
