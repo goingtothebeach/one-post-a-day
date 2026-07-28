@@ -181,8 +181,8 @@ export default function ProfileScreen() {
             <Heart
               size={13}
               strokeWidth={1.75}
-              color={item.is_liked ? colors.seal.base : colors.ink[400]}
-              fill={item.is_liked ? colors.seal.base : 'transparent'}
+              color={item.is_liked ? colors.ink[900] : colors.ink[400]}
+              fill={item.is_liked ? colors.ink[900] : 'transparent'}
             />
             <Text style={styles.entryNum}>{item.likes_count}</Text>
             <Bookmark

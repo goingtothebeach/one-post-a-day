@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
-  Dimensions,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -18,6 +17,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useAppInsets } from '@/hooks/use-app-insets';
@@ -237,7 +237,7 @@ export default function HomeScreen() {
     }
   };
 
-  const screenWidth = Dimensions.get('window').width;
+  const { width: screenWidth } = useWindowDimensions();
   const contentWidth = Math.min(screenWidth, 640) - spacing[5] * 2;
 
   const createPost = async () => {
@@ -558,10 +558,10 @@ export default function HomeScreen() {
             <Heart
               size={17}
               strokeWidth={1.75}
-              color={item.is_liked ? colors.seal.base : colors.ink[400]}
-              fill={item.is_liked ? colors.seal.base : 'transparent'}
+              color={item.is_liked ? colors.ink[900] : colors.ink[400]}
+              fill={item.is_liked ? colors.ink[900] : 'transparent'}
             />
-            <Text style={[styles.actionNum, item.is_liked && { color: colors.seal.base }]}>
+            <Text style={[styles.actionNum, item.is_liked && { color: colors.ink[900] }]}>
               {item.likes_count || 0}
             </Text>
           </TouchableOpacity>
