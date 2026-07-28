@@ -90,9 +90,10 @@ def feed(
             {
                 "id": post.id,
                 "author_id": post.author_id,
+                # 不下发 phone：feed 是【公开】接口（未登录也能读），
+                # 泄露作者手机号毫无必要，前端只用 name/avatar 展示
                 "author": {
                     "id": post.author.id,
-                    "phone": post.author.phone,
                     "name": post.author.name,
                     "avatar": post.author.avatar,
                 },

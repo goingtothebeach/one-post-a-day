@@ -13,7 +13,7 @@ Base.metadata.create_all(bind=engine)
 
 def run_migrations():
     import os
-    from sqlalchemy import text
+    from sqlalchemy import inspect, text
     ini = os.path.join(os.path.dirname(__file__), "alembic.ini")
     alembic_cfg = Config(ini)
     alembic_cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "alembic"))
@@ -26,6 +26,22 @@ def run_migrations():
             current = None
 
         if not current:
+            # 上面的 create_all() 已经按【当前】models 建好了全部表，
+            # 所以此时库里的 schema 其实等于最新版，不是最老版。
+            # 如果无条件 stamp 成最老的 741c3de4a7ff，alembic 会重放后续迁移，
+            # 在已存在的列上跑 ADD COLUMN 直接报 1060 Duplicate column，
+            # 整条链就断在那里（异常还被下面的 except 吞掉，只打一行 warning）。
+            #
+            # 判据：老库在 741c3de4a7ff 之前就有 users 表但没有 avatar 列；
+            # 全新库经 create_all 之后 avatar 一定存在。
+            has_avatar = any(
+                col["name"] == "avatar" for col in inspect(engine).get_columns("users")
+            )
+            baseline = "head" if has_avatar else "741c3de4a7ff"
+            if baseline == "head":
+                command.stamp(alembic_cfg, "head")
+                print("Fresh database detected: stamped alembic to head")
+                return
             conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL, PRIMARY KEY (version_num))"))
             conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('741c3de4a7ff')"))
             conn.commit()
@@ -35,7 +51,10 @@ def run_migrations():
 try:
     run_migrations()
 except Exception as e:
-    print(f"Migration warning: {e}")
+    # 迁移失败必须显眼：过去这里只打一行 warning，导致唯一约束没加上却毫无察觉
+    import traceback
+    print(f"!!! MIGRATION FAILED: {e}")
+    traceback.print_exc()
 
 # 抽签只由 GitHub Actions 的 cron 调 POST /lottery/run 触发
 # （见 .github/workflows/daily-lottery.yml）。
