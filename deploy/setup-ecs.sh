@@ -26,9 +26,18 @@ say()  { printf '\n\033[1;33m━━ %s\033[0m\n' "$1"; }
 ok()   { printf '\033[32m  ✓ %s\033[0m\n' "$1"; }
 warn() { printf '\033[33m  ! %s\033[0m\n' "$1"; }
 
-[[ $EUID -eq 0 ]] || { echo "请用 root 执行"; exit 1; }
+# 轻量应用服务器的默认用户常是 admin / ubuntu 而非 root，但有免密 sudo。
+# 不强制要求 root 登录，非 root 时自动用 sudo 重新执行自己。
+if [[ $EUID -ne 0 ]]; then
+  if sudo -n true 2>/dev/null; then
+    echo "当前非 root，改用 sudo 重新执行…"
+    exec sudo -E bash "$0" "$@"
+  fi
+  echo "请用 root 执行，或确保当前用户有免密 sudo"
+  exit 1
+fi
 
-say "1/7 系统依赖"
+say "1/8 系统依赖"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv python3-pip git nginx \
@@ -36,7 +45,32 @@ apt-get install -y -qq python3 python3-venv python3-pip git nginx \
 timedatectl set-timezone Asia/Shanghai
 ok "已安装，时区设为 Asia/Shanghai"
 
-say "2/7 MySQL 数据库"
+say "2/8 内存与 swap"
+MEM_MB=$(free -m | awk '/^Mem:/{print $2}')
+SWAP_MB=$(free -m | awk '/^Swap:/{print $2}')
+ok "物理内存 ${MEM_MB} MB，现有 swap ${SWAP_MB} MB"
+# 小内存机型没有 swap 时，MySQL 峰值会触发 OOM Killer（通常先杀 mysqld）。
+# 建 2G swap 兜底：磁盘很充裕，代价可忽略。
+if [[ $SWAP_MB -lt 512 && $MEM_MB -lt 4096 ]]; then
+  if [[ ! -f /swapfile ]]; then
+    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+    chmod 600 /swapfile
+    mkswap -q /swapfile
+    swapon /swapfile
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    # 有 swap 但优先用物理内存：数据库场景不希望频繁换出
+    sysctl -q -w vm.swappiness=10
+    grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
+    ok "已创建 2G swap（swappiness=10）"
+  else
+    swapon /swapfile 2>/dev/null || true
+    ok "/swapfile 已存在，已启用"
+  fi
+else
+  ok "无需额外 swap"
+fi
+
+say "3/8 MySQL 数据库"
 systemctl enable --now mysql >/dev/null 2>&1 || true
 if [[ -f $ENV_FILE ]] && grep -q '^DATABASE_URL=' "$ENV_FILE"; then
   DB_PASS="$(sed -n 's|^DATABASE_URL=mysql+pymysql://[^:]*:\([^@]*\)@.*|\1|p' "$ENV_FILE")"
@@ -55,7 +89,23 @@ FLUSH PRIVILEGES;
 SQL
 ok "库 ${DB_NAME} 与用户 ${DB_USER} 就绪"
 
-say "3/7 拉取代码"
+# 小内存机型调优：默认 InnoDB 缓冲池 128M + 每连接开销，在 1-2G 机器上偏大。
+# 本项目数据量极小（一天最多一帖，库不到几十 MB），缓冲池给 64M 完全够。
+if [[ $MEM_MB -lt 2560 ]]; then
+  cat > /etc/mysql/mysql.conf.d/zz-small-memory.cnf <<'CNF'
+# 由 setup-ecs.sh 生成：适配 <2.5G 内存机型
+# 本项目写入量被产品规则锁死（一天一帖），无需大缓冲池
+[mysqld]
+innodb_buffer_pool_size = 64M
+innodb_log_buffer_size  = 8M
+max_connections         = 30
+performance_schema      = OFF
+CNF
+  systemctl restart mysql
+  ok "已写入 MySQL 小内存配置（缓冲池 64M，max_connections 30）"
+fi
+
+say "4/8 拉取代码"
 if [[ -d $APP_DIR/.git ]]; then
   git -C "$APP_DIR" fetch --quiet origin "$BRANCH"
   git -C "$APP_DIR" reset --hard --quiet "origin/$BRANCH"
@@ -65,13 +115,13 @@ else
   ok "已克隆到 $APP_DIR"
 fi
 
-say "4/7 Python 环境"
+say "5/8 Python 环境"
 python3 -m venv "$APP_DIR/venv" 2>/dev/null || true
 "$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$APP_DIR/venv/bin/pip" install --quiet -r "$APP_DIR/server/requirements.txt"
 ok "依赖已安装"
 
-say "5/7 环境变量 $ENV_FILE"
+say "6/8 环境变量 $ENV_FILE"
 if [[ -f $ENV_FILE ]]; then
   warn "已存在，保留不动。要改请手动编辑：nano $ENV_FILE"
 else
@@ -104,7 +154,7 @@ EOF
   warn "阿里云那几项还是空的，启动前必须填！"
 fi
 
-say "6/7 systemd 服务"
+say "7/8 systemd 服务"
 install -m 644 "$APP_DIR/deploy/onedayapost-api.service" \
   /etc/systemd/system/onedayapost-api.service
 chown -R www-data:www-data "$APP_DIR"
@@ -112,7 +162,7 @@ systemctl daemon-reload
 systemctl enable onedayapost-api >/dev/null 2>&1
 ok "onedayapost-api.service 已注册"
 
-say "7/7 nginx"
+say "8/8 nginx"
 sed "s/api\.onedayapost\.fun/${DOMAIN}/g" "$APP_DIR/deploy/api.nginx.conf" \
   > /etc/nginx/sites-available/onedayapost-api
 ln -sf /etc/nginx/sites-available/onedayapost-api /etc/nginx/sites-enabled/onedayapost-api
