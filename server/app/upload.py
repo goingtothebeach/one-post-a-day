@@ -9,14 +9,29 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 ROLE_ARN = os.getenv("ALIYUN_OSS_ROLE_ARN")
 AK = os.getenv("ALIYUN_ACCESS_KEY_ID")
 SK = os.getenv("ALIYUN_ACCESS_KEY_SECRET")
-BUCKET = os.getenv("ALIYUN_OSS_BUCKET", "one-post-a-day")
+# 不再给 bucket 兜默认值：旧的 one-post-a-day 已被其他账号占用（OSS 名字全局唯一），
+# 写死默认值会让配置缺失时静默指向别人的 bucket。缺失就直接报错更安全。
+BUCKET = os.getenv("ALIYUN_OSS_BUCKET")
 ENDPOINT = os.getenv("ALIYUN_OSS_ENDPOINT", "oss-cn-beijing.aliyuncs.com")
 DURATION = int(os.getenv("ALIYUN_OSS_STS_DURATION", "3600"))
 
 @router.get("/credentials")
 def credentials(user=Depends(get_current_user)):
-    if not ROLE_ARN or not AK or not SK:
-        raise HTTPException(status_code=500, detail="upload not configured")
+    missing = [
+        n
+        for n, v in (
+            ("ALIYUN_OSS_ROLE_ARN", ROLE_ARN),
+            ("ALIYUN_ACCESS_KEY_ID", AK),
+            ("ALIYUN_ACCESS_KEY_SECRET", SK),
+            ("ALIYUN_OSS_BUCKET", BUCKET),
+        )
+        if not v
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"upload not configured: missing {', '.join(missing)}",
+        )
     try:
         from alibabacloud_sts20150401.client import Client as StsClient
         from alibabacloud_tea_openapi.models import Config
