@@ -75,7 +75,11 @@ def main() -> int:
             cfg = Config(access_key_id=ak, access_key_secret=sk)
             cfg.endpoint = "sts.aliyuncs.com"
             body = Sts(cfg).get_caller_identity().body
-            line(OK, "有效", f"账号 ...{str(body.account_id)[-4:]} / {body.identity_type}")
+            idt = str(body.identity_type)
+            line(OK, "有效", f"账号 ...{str(body.account_id)[-4:]} / {idt}")
+            if idt == "Account":
+                hint("这是【主账号】密钥。阿里云不允许主账号调 AssumeRole，")
+                hint("所以图片上传必然失败——需要改用 RAM 子用户的密钥。")
         except Exception as e:
             s = str(e)
             line(FAIL, "无效")
@@ -111,7 +115,11 @@ def main() -> int:
             s = str(e)
             line(FAIL, "失败")
             failures += 1
-            if "EntityNotExist.Role" in s:
+            if "may not be assumed by root" in s:
+                hint("主账号不能 AssumeRole（阿里云的硬限制，改权限也没用）。")
+                hint("需要：RAM 控制台 → 用户 → 创建【子用户】并勾选永久 AccessKey，")
+                hint("给它 AliyunSTSAssumeRoleAccess 权限，然后用子用户的 AK/SK 替换。")
+            elif "EntityNotExist.Role" in s:
                 hint("角色不存在，检查 ROLE_ARN 是否写对")
             elif "NoPermission" in s or "Forbidden" in s:
                 hint("RAM 用户缺少 AliyunSTSAssumeRoleAccess 权限，或角色信任策略没允许该用户")
@@ -182,6 +190,12 @@ def main() -> int:
             elif "MOBILE" in code.upper() or "PHONE" in code.upper() or "PARAM" in code.upper():
                 # 被参数校验拦下 = 鉴权和产品开通都过了
                 line(OK, "鉴权与产品开通正常", f"（被号码校验拦下：{code}）")
+            elif code == "UNKNOWN":
+                line(FAIL, "返回 UNKNOWN（无详细信息）")
+                failures += 1
+                hint("最常见原因：未开启「融合认证」功能。")
+                hint("去号码认证服务控制台开启，否则该接口不返回具体错误。")
+                hint("另外确认用的是【系统赠送签名】+【配套的赠送模板】。")
             else:
                 line(FAIL, "接口可达但返回异常", f"{code}: {body.message}")
                 failures += 1
