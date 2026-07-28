@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# One Post A Day —— 阿里云香港 ECS 后端初始化（Ubuntu 22.04）
+# One Post A Day —— 后端服务器初始化（Ubuntu 22.04）
+#
+# 只依赖 Ubuntu + Python + MySQL + nginx，不绑定任何云厂商：
+# 阿里云/腾讯云/Vultr/Hetzner 等都能直接用（图片仍存阿里云 OSS，与服务器无关）。
 #
 # 在【服务器上】以 root 执行一次即可。可重复运行（幂等）：
-#   ssh root@<ECS公网IP>
+#   ssh root@<服务器公网IP>
 #   bash setup-ecs.sh
 #
 # 做的事：装依赖 → 建库 → 拉代码 → 装 Python 包 → 写 systemd → 配 nginx。
@@ -144,13 +147,15 @@ cat <<TXT
    解析生效后再签证书（顺序反了会失败）：
      certbot --nginx -d ${DOMAIN}
 
-4) 安全组：放行 80 / 443；【不要】放行 3306 和 4000
+4) 防火墙/安全组：放行 80 / 443；【不要】放行 3306 和 4000
 
-5) 记下 CRON_SECRET，填进 GitHub Actions Secrets：
+5) GitHub Actions Secrets 配两项：
+     API_BASE_URL = https://${DOMAIN}
+     CRON_SECRET  = 见下（必须一致，否则抽签返回 503）
      grep CRON_SECRET $ENV_FILE
-   同时把 RAILWAY_API_URL 改成 https://${DOMAIN}
 
-6) 前端 app/config/api.ts 的 PRODUCTION_API 改成 https://${DOMAIN}，
-   重新构建并 push（Vercel 会自动部署）
+6) 前端 app/config/api.ts 已指向 https://api.onedayapost.fun。
+   若你换了域名，改这里并重新构建 push（Vercel 自动部署）；
+   也可以不改代码，构建时传 EXPO_PUBLIC_API_BASE=https://${DOMAIN}
 ────────────────────────────────────────
 TXT

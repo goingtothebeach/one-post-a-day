@@ -4,7 +4,7 @@
 **项目状态**: 前后端均已上线，持续迭代中  
 **GitHub**: https://github.com/owenandveronica/one-post-a-day.git  
 **前端地址**: https://onedayapost.fun  
-**后端地址**: https://api.onedayapost.fun（阿里云香港 ECS；Railway 旧部署已删除）
+**后端地址**: https://api.onedayapost.fun（待部署；Railway 旧部署已删除）
 
 ---
 
@@ -21,8 +21,8 @@
 | 层 | 技术 | 部署 |
 |----|------|------|
 | 前端 | React Native + Expo（static export） | Vercel（https://onedayapost.fun） |
-| 后端 | FastAPI + SQLAlchemy | 阿里云香港 ECS（systemd + nginx 反代） |
-| 数据库 | MySQL 8.0 | ECS 本机自建 |
+| 后端 | FastAPI + SQLAlchemy | 香港/境外 VPS（systemd + nginx 反代） |
+| 数据库 | MySQL 8.0 | 服务器本机自建 |
 | 图片存储 | 阿里云 OSS | 北京区域，bucket `onedayapost-media` |
 | 定时任务 | GitHub Actions（每天 UTC 10:00 = 北京 18:00） | GitHub |
 
@@ -212,7 +212,7 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 | 事项 | 状态 | 说明 |
 |------|------|------|
 | 开通「融合认证」 | **待做** | 短信的最后一步。RAM 权限已配好（自定义策略 `onedayapost-sms-verify`，仅授发/校验验证码），但号码认证服务未开启融合认证，接口返回 `code=UNKNOWN`。本地开发用 `DEV_FAKE_OTP=1` 不受影响 |
-| 部署到香港 ECS | **待做** | 部署资产已就绪（`deploy/`），见下方步骤 |
+| 部署后端 | **待做** | 部署资产已就绪（`deploy/`），不绑定特定云厂商，见下方步骤 |
 | 删掉主账号 AK/SK | 建议 | 排查期间用主账号密钥调过 RAM/OSS API。现已改用子用户 `odau-customer-user`（最小权限），主账号密钥可以删了 |
 | 图片缓存 | 待做 | expo-image 加 `cachePolicy="memory-disk"` |
 | sessions 表只写不读 | 待做 | `auth.py` 写入 session 但从不校验，logout 无法吊销 token（`deps.py` 只验 JWT 签名）。要支持强制下线需改成查库 |
@@ -221,11 +221,13 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 
 ---
 
-## 部署到阿里云香港 ECS
+## 后端部署（香港/境外 VPS）
 
 **背景**：Railway 上的应用已删除（数据库随之丢失），前端仍在 Vercel。
-后端重新部署到阿里云香港：无需备案，延迟从 200-300ms 降到 30-50ms，
-且与 OSS 同属阿里云、计费集中。
+后端需要重新部署。选香港/境外的理由：无需备案，且相比美东延迟明显更低。
+
+⚠️ 部署脚本只依赖 Ubuntu 22.04 + Python + MySQL + nginx，**不绑定阿里云**。
+换成腾讯云/Vultr/Hetzner 等任何 VPS 都能直接用，可按价格自由选。
 
 **架构**：前端 Vercel（onedayapost.fun）→ 后端 ECS（api.onedayapost.fun）→ 本机 MySQL + 阿里云 OSS。
 ⚠️ 与旧方案不同：**nginx 只反代 API，不再 serve 前端**（前端由 Vercel 托管）。
@@ -233,18 +235,19 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 ### 部署资产
 | 文件 | 用途 |
 |------|------|
-| `deploy/setup-ecs.sh` | 服务器初始化脚本，幂等可重复运行 |
+| `deploy/setup-ecs.sh` | 服务器初始化脚本，幂等可重复运行（Ubuntu 22.04） |
 | `deploy/api.nginx.conf` | nginx 反代配置（只代理 API） |
 | `deploy/onedayapost-api.service` | systemd 单元 |
 
 ### 步骤
-1. 买阿里云**香港**轻量应用服务器（2核2G，Ubuntu 22.04，约 24-30 元/月）
+1. 买一台香港/境外的 2核2G Ubuntu 22.04 服务器
+   （价格以控制台实时报价为准，不同厂商与套餐差异很大；本项目对配置要求不高）
 2. `scp deploy/setup-ecs.sh root@<公网IP>:~/ && ssh root@<公网IP> 'bash setup-ecs.sh'`
    脚本会：装依赖 → 建库建用户（随机密码）→ 拉代码 → 装 Python 包 →
    生成 `/etc/onedayapost.env`（随机 JWT/CRON_SECRET，权限 600）→ 注册 systemd → 配 nginx
 3. 编辑 `/etc/onedayapost.env`，把本地 `server/.env` 里的阿里云那几项抄进去
 4. `systemctl start onedayapost-api` && `curl localhost:4000/health`
-5. DNS 加 `api.onedayapost.fun` A 记录指向 ECS 公网 IP
+5. DNS 加 `api.onedayapost.fun` A 记录指向服务器公网 IP
 6. **解析生效后**再 `certbot --nginx -d api.onedayapost.fun`（顺序反了会签发失败）
 7. 安全组放行 80/443；**不要**放行 3306 和 4000
 8. GitHub Actions Secrets 配 `API_BASE_URL=https://api.onedayapost.fun` 和 `CRON_SECRET`
