@@ -30,6 +30,8 @@ const outDir = path.join(root, 'assets', 'images');
 
 /** 图标上的字。改 App 名时改这里，然后重跑本脚本。 */
 const GLYPH = '聚光灯';
+/** favicon 这类极小尺寸只放一个字：32px 下三个字会糊成一团灰。 */
+const TINY_GLYPH = '灯';
 
 const CHROME =
   process.env.CHROME_PATH ||
@@ -42,9 +44,13 @@ if (!fs.existsSync(CHROME)) {
 
 /**
  * @param {number} size 画布边长
- * @param {boolean} maskable Android maskable 版：字更小，留足被裁的余量
+ * @param {'full'|'maskable'|'tiny'|'plain'} mode
+ *   full     普通版：三个字铺满
+ *   maskable Android 可裁版：字更小，留足被裁的余量
+ *   tiny     favicon 尺寸：三个字在 32px 下会糊成一团，只放一个字
+ *   plain    只有渐变、不放字（Android 自适应图标的背景层）
  */
-function html(size, maskable) {
+function html(size, mode) {
   // 渐变必须铺满整个画布，不留白边、不加圆角。
   //
   // 这是踩过的坑：之前给普通版留了 6% 白边 + 22% 圆角，配合透明背景截图，
@@ -52,8 +58,9 @@ function html(size, maskable) {
   // 会把透明区域合成为黑色 —— 加到主屏幕后图标周围一圈黑框。
   // 圆角本来就该交给系统裁（iOS 和 Android 都会自己裁），我们只负责给一张
   // 完全不透明的方图。
-  const glyph = maskable ? size * 0.195 : size * 0.225;
-  // maskable 安全区是中心 80% 的圆，三个字横排的对角点不能超出去
+  const glyph =
+    mode === 'tiny' ? size * 0.62 : mode === 'maskable' ? size * 0.195 : size * 0.225;
+  const textOnly = mode === 'tiny' ? TINY_GLYPH : mode === 'plain' ? '' : GLYPH;
   const shadowY = size * 0.012;
   const shadowBlur = size * 0.045;
 
@@ -85,22 +92,65 @@ function html(size, maskable) {
     text-shadow:0 ${shadowY}px ${shadowBlur}px rgba(150, 60, 90, .30);
   }
 </style></head><body>
-  <div class="tile"><span class="glyph">${GLYPH}</span></div>
+  <div class="tile"><span class="glyph">${textOnly}</span></div>
+</body></html>`;
+}
+
+/**
+ * Android 主题图标（monochrome）层。
+ *
+ * 这一层的规则和其他所有图标**相反**：系统会拿它当蒙版，按用户壁纸取色重新上色，
+ * 所以必须是「透明背景 + 单色实心图形」，不能铺渐变、也不能不透明。
+ * 因此它不走 html()，单独生成。
+ */
+function monochromeHtml(size) {
+  const glyph = size * 0.42;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:${size}px; height:${size}px; background:transparent; }
+  .wrap {
+    width:${size}px; height:${size}px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .glyph {
+    font-family:"SF Pro Rounded","Arial Rounded MT Bold","PingFang SC",-apple-system,sans-serif;
+    font-size:${glyph}px; font-weight:800; line-height:1;
+    /* 纯不透明黑：系统只看 alpha 通道做蒙版，颜色本身会被替换掉 */
+    color:#000000;
+  }
+</style></head><body>
+  <div class="wrap"><span class="glyph">${TINY_GLYPH}</span></div>
 </body></html>`;
 }
 
 const TARGETS = [
-  { file: 'pwa-180.png', size: 180, maskable: false },
-  { file: 'pwa-192.png', size: 192, maskable: false },
-  { file: 'pwa-512.png', size: 512, maskable: false },
-  { file: 'pwa-maskable-512.png', size: 512, maskable: true },
+  // PWA / 「添加到主屏幕」
+  { file: 'pwa-180.png', size: 180, mode: 'full' },
+  { file: 'pwa-192.png', size: 192, mode: 'full' },
+  { file: 'pwa-512.png', size: 512, mode: 'full' },
+  { file: 'pwa-maskable-512.png', size: 512, mode: 'maskable' },
+  // app.json 引用的原生资源。1024 是 iOS App Store 要求的尺寸，
+  // 且**必须无 alpha**，正好和我们不透明铺满的做法一致。
+  { file: 'icon.png', size: 1024, mode: 'full' },
+  // 启动屏的图：resizeMode contain + imageWidth 200，所以给方图就行
+  { file: 'splash-icon.png', size: 512, mode: 'full' },
+  // Android 自适应图标的前景层会被裁，等同 maskable 的安全区要求
+  { file: 'android-icon-foreground.png', size: 512, mode: 'maskable' },
+  // 背景层：只要渐变，不放字（否则会和前景层的字叠成两层）。
+  // 模板给的默认图是一张浅蓝安全区示意图，真打包会直接变成图标底色。
+  { file: 'android-icon-background.png', size: 512, mode: 'plain' },
+  // 浏览器标签页：32px 下三个字糊成一团，只放一个「灯」
+  { file: 'favicon.png', size: 48, mode: 'tiny' },
+  // 主题图标层：透明底 + 单色，规则和上面全部相反，见 monochromeHtml
+  { file: 'android-icon-monochrome.png', size: 512, mode: 'monochrome' },
 ];
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'opad-icons-'));
 
 for (const t of TARGETS) {
+  const mono = t.mode === 'monochrome';
   const htmlPath = path.join(tmp, `${t.file}.html`);
-  fs.writeFileSync(htmlPath, html(t.size, t.maskable));
+  fs.writeFileSync(htmlPath, mono ? monochromeHtml(t.size) : html(t.size, t.mode));
   const outPath = path.join(outDir, t.file);
 
   execFileSync(
@@ -109,9 +159,10 @@ for (const t of TARGETS) {
       '--headless',
       '--disable-gpu',
       '--hide-scrollbars',
-      // 刻意用不透明白底兜底（而不是 00000000 透明）：
+      // 除 monochrome 外都用不透明白底兜底（而不是 00000000 透明）：
       // 透明背景 + 任何留白都会让 iOS 把边缘渲染成黑色。
-      '--default-background-color=FFFFFFFF',
+      // monochrome 层恰恰**需要**透明，它是给系统做蒙版用的。
+      `--default-background-color=${mono ? '00000000' : 'FFFFFFFF'}`,
       `--window-size=${t.size},${t.size}`,
       `--screenshot=${outPath}`,
       `file://${htmlPath}`,
@@ -120,7 +171,8 @@ for (const t of TARGETS) {
   );
 
   const kb = (fs.statSync(outPath).size / 1024).toFixed(1);
-  console.log(`  ${t.file}  ${t.size}x${t.size}  ${kb} KB${t.maskable ? '  (maskable)' : ''}`);
+  const tag = t.mode === 'full' ? '' : `  (${t.mode})`;
+  console.log(`  ${t.file.padEnd(28)} ${t.size}x${t.size}  ${kb} KB${tag}`);
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
@@ -175,6 +227,8 @@ function cornerAlphas(file) {
 
 let allOpaque = true;
 for (const t of TARGETS) {
+  // monochrome 层本来就该是透明的（系统拿它做蒙版），不参与这项自检
+  if (t.mode === 'monochrome') continue;
   const file = path.join(outDir, t.file);
   const a = cornerAlphas(file);
   if (a && a.some((v) => v < 255)) {
