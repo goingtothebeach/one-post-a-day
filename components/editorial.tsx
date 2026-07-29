@@ -1,12 +1,12 @@
 import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import DS, { text as T } from '@/constants/design-system';
-import { DoubleRule } from './paper';
 
-const { colors, spacing, radius } = DS;
+const { colors, gradient, spacing, radius, elevation } = DS;
 
 const CN_DIGITS = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
-/** 把 2026-07-28 排成「二〇二六年七月二十八日」，日刊的日期行。 */
+/** 把 2026-07-28 排成「二〇二六年七月二十八日」。 */
 export function chineseDate(d: Date): string {
   const y = String(d.getFullYear())
     .split('')
@@ -25,91 +25,82 @@ export function chineseDate(d: Date): string {
 
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
+/** 「7月29日」这种短日期，新刊头用它，比中文全写更轻快。 */
+function shortDate(d: Date): string {
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 /**
- * 刊头。每个页面顶部统一用它，是「日刊」调性最直接的载体。
- * 左侧报名 + 日期，右侧可放一个操作（如设置）。
+ * 页头。居中排布：小号刊名 + 大标题 + 副标题。
+ *
+ * 上一版是左对齐的报纸刊头（刊名+中文长日期+双线），
+ * 新语言改成居中柔光标题——居中让页面更像「内容展示」而不是「文档」。
  */
 export function Masthead({
   title = 'ONE POST A DAY',
   subtitle,
+  /** 大标题。不传则用日期，保持与上一版「日期即标题」的行为一致 */
+  heading,
   right,
   style,
 }: {
   title?: string;
   subtitle?: string;
+  heading?: string;
   right?: React.ReactNode;
   style?: ViewStyle;
 }) {
   const now = new Date();
-  const line = subtitle ?? `${chineseDate(now)}　${WEEKDAYS[now.getDay()]}`;
   return (
-    <View style={style}>
-      <View style={styles.row}>
-        <View style={{ flex: 1 }}>
-          <Text style={T.masthead}>{title}</Text>
-          <Text style={[T.dateline, { marginTop: spacing[1] }]}>{line}</Text>
-        </View>
-        {right}
-      </View>
-      <DoubleRule style={{ marginTop: spacing[3] }} />
+    <View style={[styles.mastWrap, style]}>
+      {right ? <View style={styles.mastRight}>{right}</View> : null}
+      <Text style={[T.masthead, styles.mastCenter]}>{title}</Text>
+      <Text style={[T.display, styles.mastHeading]}>
+        {heading ?? `${shortDate(now)} · 今日发言人`}
+      </Text>
+      {subtitle ? (
+        <Text style={[T.dateline, styles.mastCenter, { marginTop: spacing[1] }]}>
+          {subtitle}
+        </Text>
+      ) : (
+        <Text style={[T.dateline, styles.mastCenter, { marginTop: spacing[1] }]}>
+          {WEEKDAYS[now.getDay()]} · 全网只有这一条
+        </Text>
+      )}
     </View>
   );
 }
 
 /**
- * 朱红圆印。全局唯一的强调色用在这里——「今日发言人」的身份标记。
- * 刻意做轻微旋转，像手工盖上去的。
+ * 「今日唯一」渐变徽标。
+ *
+ * 上一版是朱红方印（手工盖章感）。新语言里身份标记改成柔光胶囊：
+ * 左侧一个渐变小圆点 + 文字，浮在图片左上角或行内。
  */
 export function Seal({
-  label = '今日发言',
+  label = '今日唯一',
   size = 62,
   style,
 }: {
   label?: string;
+  /** 上一版按边长渲染方印。新版是胶囊，size 仅用于换算字号 */
   size?: number;
   style?: ViewStyle;
 }) {
-  const chars = label.split('');
   return (
-    <View
-      style={[
-        {
-          width: size,
-          height: size,
-          borderRadius: radius.sm,
-          borderWidth: 2,
-          borderColor: colors.seal.base,
-          alignItems: 'center',
-          justifyContent: 'center',
-          transform: [{ rotate: '-7deg' }],
-          backgroundColor: colors.seal.tint,
-        },
-        style,
-      ]}
-    >
-      <View style={styles.sealGrid}>
-        {chars.map((c, i) => (
-          <Text
-            key={i}
-            style={{
-              fontFamily: DS.typography.fontFamily.serif,
-              fontSize: size * 0.28,
-              lineHeight: size * 0.34,
-              fontWeight: '700',
-              color: colors.seal.base,
-              width: size * 0.34,
-              textAlign: 'center',
-            }}
-          >
-            {c}
-          </Text>
-        ))}
-      </View>
+    <View style={[styles.sealPill, style]}>
+      <LinearGradient
+        colors={gradient.primary}
+        start={gradient.diagonal.start}
+        end={gradient.diagonal.end}
+        style={styles.sealDot}
+      />
+      <Text style={styles.sealPillText}>{label}</Text>
     </View>
   );
 }
 
-/** 小号朱红徽标，用于「唯一发帖人」这类行内标记。 */
+/** 小号徽标，用于「今日唯一发表」这类行内标记。 */
 export function SealTag({ children }: { children: string }) {
   return (
     <View style={styles.sealTag}>
@@ -118,7 +109,7 @@ export function SealTag({ children }: { children: string }) {
   );
 }
 
-/** 栏目标签，如「今日」「往期」。小号大写 + 细线，报刊栏目感。 */
+/** 栏目标签，如「今日」「往期」。小号大写字，新语言里不再挂延伸线。 */
 export function SectionLabel({
   children,
   style,
@@ -129,45 +120,153 @@ export function SectionLabel({
   return (
     <View style={[styles.sectionLabel, style]}>
       <Text style={T.label}>{children}</Text>
-      <View style={styles.sectionLabelLine} />
     </View>
   );
 }
 
+/**
+ * 主操作按钮：渐变填充 + 粉色发光。
+ * 这套语言里所有主 CTA 都走这里（报名、发布），不要用纯色块。
+ */
+export function GradientButton({
+  label,
+  onPress,
+  disabled = false,
+  rich = false,
+  style,
+}: {
+  label: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  /** 三段渐变，用于页面最重要的那一个按钮 */
+  rich?: boolean;
+  style?: ViewStyle;
+}) {
+  if (disabled) {
+    return (
+      <View style={[styles.btnDisabled, style]}>
+        <Text style={[T.button, { color: colors.ink[300] }]}>{label}</Text>
+      </View>
+    );
+  }
+  return (
+    <LinearGradient
+      colors={rich ? gradient.primaryRich : gradient.primary}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0.6 }}
+      style={[styles.btn, style]}
+    >
+      <Text style={T.button}>{label}</Text>
+    </LinearGradient>
+  );
+}
+
+/** 渐变头像。没有图片时用它做占位，比灰色圆好看很多。 */
+export function GradientAvatar({
+  size = 38,
+  style,
+}: {
+  size?: number;
+  style?: ViewStyle;
+}) {
+  return (
+    <LinearGradient
+      colors={gradient.avatar}
+      start={gradient.diagonal.start}
+      end={gradient.diagonal.end}
+      style={[
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 2.5,
+          borderColor: '#FFFFFF',
+        },
+        elevation.lift,
+        style,
+      ]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  mastWrap: {
+    alignItems: 'center',
+    paddingTop: spacing[3],
+    paddingBottom: spacing[4],
   },
-  sealGrid: {
+  mastRight: {
+    position: 'absolute',
+    right: 0,
+    top: spacing[2],
+    zIndex: 2,
+  },
+  mastCenter: {
+    textAlign: 'center',
+  },
+  mastHeading: {
+    textAlign: 'center',
+    marginTop: spacing[1],
+  },
+  sealPill: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    width: '72%',
-    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing[1] + 1,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.90)',
+    borderRadius: radius.full,
+    paddingLeft: 7,
+    paddingRight: spacing[3],
+    paddingVertical: 5,
+    ...elevation.lift,
+  },
+  sealDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  sealPillText: {
+    fontFamily: DS.typography.fontFamily.rounded,
+    fontSize: DS.typography.size.micro,
+    fontWeight: '700',
+    color: colors.seal.base,
+    letterSpacing: 0.4,
   },
   sealTag: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.seal.base,
+    alignSelf: 'flex-start',
     backgroundColor: colors.seal.tint,
-    paddingHorizontal: spacing[2],
-    paddingVertical: 2,
-    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
+    paddingHorizontal: spacing[3],
+    paddingVertical: 4,
+    borderRadius: radius.full,
   },
   sealTagText: {
-    fontFamily: DS.typography.fontFamily.sans,
+    fontFamily: DS.typography.fontFamily.rounded,
     fontSize: DS.typography.size.micro,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.seal.deep,
     letterSpacing: 0.4,
   },
   sectionLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
+    paddingLeft: spacing[1],
   },
-  sectionLabelLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.rule.base,
+  btn: {
+    borderRadius: radius.xxl,
+    paddingVertical: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...elevation.glowPink,
+  },
+  btnDisabled: {
+    borderRadius: radius.xxl,
+    paddingVertical: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.paper.sunken,
+    borderWidth: 1,
+    borderColor: colors.paper.edge,
   },
 });

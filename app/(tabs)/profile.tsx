@@ -1,10 +1,14 @@
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import dayjs from 'dayjs';
 // 按需导入：Metro 不做 tree-shaking，整包导入会把 1695 个图标全打进 bundle
 import Bookmark from 'lucide-react-native/dist/esm/icons/bookmark.js';
+import Camera from 'lucide-react-native/dist/esm/icons/camera.js';
 import Heart from 'lucide-react-native/dist/esm/icons/heart.js';
+import LogOut from 'lucide-react-native/dist/esm/icons/log-out.js';
 import Settings from 'lucide-react-native/dist/esm/icons/settings.js';
+import SquarePen from 'lucide-react-native/dist/esm/icons/square-pen.js';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -22,13 +26,16 @@ import {
 } from 'react-native';
 import { useAppInsets } from '@/hooks/use-app-insets';
 import DS, { noOutline, text as T } from '@/constants/design-system';
-import { Masthead, SectionLabel } from '@/components/editorial';
-import { Rule } from '@/components/paper';
+import { GradientAvatar, GradientButton, Masthead, SectionLabel } from '@/components/editorial';
+import { GlassCard, PageGradient } from '@/components/paper';
 import { API_BASE } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
 
-const { colors, spacing, radius, typography } = DS;
+const { colors, gradient, spacing, radius, typography } = DS;
+
+/** 头像直径。个人页的头像是这一屏的视觉主角，比列表里的头像大得多 */
+const AVATAR = 94;
 
 type TicketHistory = {
   id: number;
@@ -165,13 +172,18 @@ export default function ProfileScreen() {
   const renderItem = ({ item }: { item: Item }) => {
     const cover = item.images?.[0]?.url || item.media_url;
     return (
-      <View style={styles.entry}>
+      <GlassCard style={styles.entry}>
         {cover ? (
           <Image source={{ uri: cover }} style={styles.entryThumb} />
         ) : (
-          <View style={[styles.entryThumb, styles.entryThumbEmpty]}>
+          <LinearGradient
+            colors={gradient.photo}
+            start={gradient.diagonal.start}
+            end={gradient.diagonal.end}
+            style={[styles.entryThumb, styles.entryThumbEmpty]}
+          >
             <Text style={styles.entryThumbMark}>文</Text>
-          </View>
+          </LinearGradient>
         )}
         <View style={{ flex: 1, marginLeft: spacing[4] }}>
           <Text style={styles.entryTitle} numberOfLines={2}>
@@ -182,33 +194,35 @@ export default function ProfileScreen() {
           </Text>
           <View style={styles.entryStats}>
             <Heart
-              size={13}
-              strokeWidth={1.75}
-              color={item.is_liked ? colors.ink[900] : colors.ink[400]}
-              fill={item.is_liked ? colors.ink[900] : 'transparent'}
+              size={14}
+              strokeWidth={2}
+              color={item.is_liked ? colors.seal.base : colors.ink[400]}
+              fill={item.is_liked ? colors.seal.base : 'transparent'}
             />
             <Text style={styles.entryNum}>{item.likes_count}</Text>
             <Bookmark
-              size={13}
-              strokeWidth={1.75}
-              color={item.is_favorited ? colors.ink[900] : colors.ink[400]}
-              fill={item.is_favorited ? colors.ink[900] : 'transparent'}
+              size={14}
+              strokeWidth={2}
+              color={item.is_favorited ? colors.seal.base : colors.ink[400]}
+              fill={item.is_favorited ? colors.seal.base : 'transparent'}
             />
             <Text style={styles.entryNum}>{item.favorites_count}</Text>
           </View>
         </View>
-      </View>
+      </GlassCard>
     );
   };
 
   return (
     <View style={styles.screen}>
+      <PageGradient />
       <StatusBar barStyle="dark-content" />
       <FlatList
         data={listData}
         keyExtractor={(i) => `${activeTab}-${i.id}`}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <Rule style={{ marginVertical: spacing[4] }} />}
+        // 卡片之间用留白分层，不再用细线
+        ItemSeparatorComponent={() => <View style={{ height: spacing[3] }} />}
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + spacing[4], paddingBottom: spacing[16] },
@@ -216,57 +230,86 @@ export default function ProfileScreen() {
         ListHeaderComponent={
           <View>
             <Masthead
-              subtitle="存　档"
+              heading="我的存档"
+              subtitle="报名记录 · 赞过 · 收藏"
               right={
-                <TouchableOpacity onPress={() => setSettingsVisible(true)} hitSlop={10}>
-                  <Settings size={19} color={colors.ink[500]} strokeWidth={1.75} />
+                <TouchableOpacity
+                  onPress={() => setSettingsVisible(true)}
+                  hitSlop={10}
+                  activeOpacity={0.85}
+                  style={styles.gearBtn}
+                >
+                  <Settings size={18} color={colors.seal.deep} strokeWidth={2} />
                 </TouchableOpacity>
               }
             />
 
-            {/* 身份牌 */}
-            <View style={styles.identity}>
-              <TouchableOpacity onPress={pickAvatar} activeOpacity={0.85}>
+            {/* 身份牌：大头像 + 名字，居中浮在渐变上 */}
+            <GlassCard style={styles.identity}>
+              <TouchableOpacity onPress={pickAvatar} activeOpacity={0.85} style={styles.avatarBox}>
                 {user?.avatar ? (
-                  <Image source={{ uri: user.avatar }} style={styles.avatar} />
+                  <Image source={{ uri: user.avatar }} style={styles.avatarPhoto} />
                 ) : (
-                  <View style={[styles.avatar, styles.avatarEmpty]}>
-                    <Text style={styles.avatarInitial}>
-                      {(user?.name || '?')[0].toUpperCase()}
-                    </Text>
-                  </View>
+                  <>
+                    <GradientAvatar size={AVATAR} />
+                    <View style={styles.avatarInitialLayer} pointerEvents="none">
+                      <Text style={styles.avatarInitial}>
+                        {(user?.name || '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                  </>
                 )}
+                {/* 相机角标只是外观提示，点击仍走整块头像的 pickAvatar */}
+                <LinearGradient
+                  colors={gradient.primary}
+                  start={gradient.diagonal.start}
+                  end={gradient.diagonal.end}
+                  style={styles.avatarCamera}
+                  pointerEvents="none"
+                >
+                  <Camera size={13} color="#FFFFFF" strokeWidth={2.25} />
+                </LinearGradient>
               </TouchableOpacity>
-              <View style={{ flex: 1, marginLeft: spacing[5] }}>
-                <Text style={styles.identityName} numberOfLines={1}>
-                  {user?.name || '未命名'}
-                </Text>
-                <Text style={[T.caption, { marginTop: 2 }]}>读者编号 · {user?.id}</Text>
-              </View>
-            </View>
 
-            {/* 三联统计，用竖细线分隔，像报表 */}
+              <Text style={styles.identityName} numberOfLines={1}>
+                {user?.name || '未命名'}
+              </Text>
+              <Text style={[T.caption, { marginTop: 3 }]}>读者编号 · {user?.id}</Text>
+            </GlassCard>
+
+            {/* 三联统计：三张独立的小卡片，数字是情绪点 */}
             <View style={styles.stats}>
               <Stat label="报名" value={String(tickets.length)} />
-              <View style={styles.statDivider} />
               <Stat label="中签" value={String(wonCount)} accent />
-              <View style={styles.statDivider} />
               <Stat label="中签率" value={`${rate}%`} />
             </View>
 
-            <SectionLabel style={{ marginTop: spacing[8], marginBottom: spacing[4] }}>
+            <SectionLabel style={{ marginTop: spacing[8], marginBottom: spacing[3] }}>
               我的收录
             </SectionLabel>
 
+            {/* 胶囊分段控件：当前 tab 是渐变实心 */}
             <View style={styles.tabs}>
               {(['likes', 'favorites'] as TabKey[]).map((k) => {
                 const on = activeTab === k;
                 return (
-                  <TouchableOpacity key={k} onPress={() => setActiveTab(k)} style={styles.tab}>
+                  <TouchableOpacity
+                    key={k}
+                    onPress={() => setActiveTab(k)}
+                    style={styles.tab}
+                    activeOpacity={0.9}
+                  >
+                    {on ? (
+                      <LinearGradient
+                        colors={gradient.primary}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0.8 }}
+                        style={[StyleSheet.absoluteFill, styles.tabFill]}
+                      />
+                    ) : null}
                     <Text style={[styles.tabText, on && styles.tabTextOn]}>
                       {k === 'likes' ? '赞过' : '收藏'}
                     </Text>
-                    <View style={[styles.tabMark, on && styles.tabMarkOn]} />
                   </TouchableOpacity>
                 );
               })}
@@ -274,12 +317,17 @@ export default function ProfileScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyMark}>—</Text>
-            <Text style={T.meta}>
+          <GlassCard tone="fillSoft" style={styles.empty}>
+            <LinearGradient
+              colors={gradient.avatar}
+              start={gradient.diagonal.start}
+              end={gradient.diagonal.end}
+              style={styles.emptyDot}
+            />
+            <Text style={[T.meta, { marginTop: spacing[4] }]}>
               {activeTab === 'likes' ? '还没有赞过的文章' : '还没有收藏的文章'}
             </Text>
-          </View>
+          </GlassCard>
         }
         showsVerticalScrollIndicator={false}
       />
@@ -289,40 +337,58 @@ export default function ProfileScreen() {
         <TouchableWithoutFeedback onPress={() => setSettingsVisible(false)}>
           <View style={styles.scrim}>
             <TouchableWithoutFeedback onPress={() => {}}>
-              <View style={styles.sheet}>
+              <LinearGradient
+                colors={gradient.page}
+                start={{ x: 1, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.sheet}
+              >
                 <Text style={[T.title, { textAlign: 'center' }]}>设置</Text>
-                <Rule style={{ marginVertical: spacing[4] }} />
-                <TouchableOpacity style={styles.sheetRow} onPress={pickAvatar}>
-                  <Text style={T.body}>更换头像</Text>
-                </TouchableOpacity>
-                <Rule />
+
                 <TouchableOpacity
                   style={styles.sheetRow}
+                  onPress={pickAvatar}
+                  activeOpacity={0.85}
+                >
+                  <Camera size={17} color={colors.seal.deep} strokeWidth={2} />
+                  <Text style={styles.sheetRowText}>更换头像</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.85}
                   onPress={() => {
                     setNewName(user?.name || '');
                     setEditNameVisible(true);
                   }}
                 >
-                  <Text style={T.body}>修改昵称</Text>
+                  <SquarePen size={17} color={colors.seal.deep} strokeWidth={2} />
+                  <Text style={styles.sheetRowText}>修改昵称</Text>
                 </TouchableOpacity>
-                <Rule />
+
                 <TouchableOpacity
-                  style={styles.sheetRow}
+                  style={[styles.sheetRow, styles.sheetRowDanger]}
+                  activeOpacity={0.85}
                   onPress={() => {
                     setSettingsVisible(false);
                     logout();
                     router.replace('/');
                   }}
                 >
-                  <Text style={[T.body, { color: colors.state.error }]}>退出登录</Text>
+                  <LogOut size={17} color={colors.state.error} strokeWidth={2} />
+                  <Text style={[styles.sheetRowText, { color: colors.state.error }]}>
+                    退出登录
+                  </Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
                   style={styles.sheetCancel}
                   onPress={() => setSettingsVisible(false)}
+                  activeOpacity={0.7}
                 >
-                  <Text style={T.meta}>取消</Text>
+                  <Text style={T.buttonGhost}>取消</Text>
                 </TouchableOpacity>
-              </View>
+              </LinearGradient>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
@@ -331,39 +397,50 @@ export default function ProfileScreen() {
       {/* 改昵称 */}
       <Modal visible={editNameVisible} transparent animationType="fade">
         <View style={styles.scrim}>
-          <View style={styles.dialog}>
+          <LinearGradient
+            colors={gradient.page}
+            start={{ x: 1, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.dialog}
+          >
             <Text style={[T.title, { textAlign: 'center' }]}>修改昵称</Text>
-            <TextInput
-              value={newName}
-              onChangeText={setNewName}
-              maxLength={50}
-              placeholder="输入新昵称"
-              placeholderTextColor={colors.ink[400]}
-              style={styles.dialogInput}
-              autoFocus
-            />
-            <Rule />
+
+            {/* 输入框是毛玻璃卡片，不是下划线 */}
+            <GlassCard tone="fillStrong" style={styles.dialogField}>
+              <Text style={T.label}>昵称</Text>
+              <TextInput
+                value={newName}
+                onChangeText={setNewName}
+                maxLength={50}
+                placeholder="输入新昵称"
+                placeholderTextColor={colors.ink[400]}
+                style={styles.dialogInput}
+                autoFocus
+              />
+            </GlassCard>
+
             <View style={styles.dialogActions}>
-              <TouchableOpacity style={styles.dialogBtn} onPress={() => setEditNameVisible(false)}>
-                <Text style={T.meta}>取消</Text>
-              </TouchableOpacity>
-              <View style={styles.dialogBtnDivider} />
               <TouchableOpacity
-                style={styles.dialogBtn}
+                style={styles.dialogCancel}
+                onPress={() => setEditNameVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={T.buttonGhost}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1 }}
                 onPress={saveNickname}
                 disabled={saving || !newName.trim()}
+                activeOpacity={0.9}
               >
-                <Text
-                  style={[
-                    styles.dialogSave,
-                    (saving || !newName.trim()) && { color: colors.ink[300] },
-                  ]}
-                >
-                  {saving ? '保存中…' : '保存'}
-                </Text>
+                <GradientButton
+                  label={saving ? '保存中…' : '保存'}
+                  disabled={saving || !newName.trim()}
+                  rich
+                />
               </TouchableOpacity>
             </View>
-          </View>
+          </LinearGradient>
         </View>
       </Modal>
     </View>
@@ -372,14 +449,15 @@ export default function ProfileScreen() {
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <View style={styles.stat}>
-      <Text style={[styles.statValue, accent && { color: colors.seal.base }]}>{value}</Text>
-      <Text style={T.label}>{label}</Text>
-    </View>
+    <GlassCard tone={accent ? 'fillStrong' : 'fill'} style={styles.statCard}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={[T.label, { marginTop: 2 }]}>{label}</Text>
+    </GlassCard>
   );
 }
 
 const styles = StyleSheet.create({
+  // 背景交给 PageGradient，这里只留兜底底色
   screen: { flex: 1, backgroundColor: colors.paper.base },
   content: {
     paddingHorizontal: spacing[5],
@@ -388,140 +466,236 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
-  identity: { flexDirection: 'row', alignItems: 'center', marginTop: spacing[7] },
-  avatar: { width: 66, height: 66, borderRadius: radius.full },
-  avatarEmpty: {
-    backgroundColor: colors.paper.sunken,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
+  gearBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glass.fillStrong,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    ...DS.elevation.lift,
+  },
+
+  identity: {
+    alignItems: 'center',
+    paddingTop: spacing[6],
+    paddingBottom: spacing[6],
+    paddingHorizontal: spacing[5],
+    marginTop: spacing[5],
+  },
+  avatarBox: {
+    width: AVATAR,
+    height: AVATAR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing[4],
+  },
+  avatarPhoto: {
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: radius.full,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    ...DS.elevation.lift,
+  },
+  avatarInitialLayer: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitial: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: 26,
-    color: colors.ink[500],
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: 36,
+    fontWeight: typography.weight.heavy,
+    color: '#FFFFFF',
   },
-  identityName: { ...T.headline, fontSize: 24 },
-
-  stats: {
-    flexDirection: 'row',
-    marginTop: spacing[7],
-    paddingVertical: spacing[5],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.rule.base,
-  },
-  stat: { flex: 1, alignItems: 'center', gap: spacing[1] },
-  statValue: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: 26,
-    color: colors.ink[900],
-  },
-  statDivider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.rule.base },
-
-  tabs: { flexDirection: 'row', gap: spacing[6] },
-  tab: { alignItems: 'center' },
-  tabText: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.bodyLg,
-    color: colors.ink[400],
-    letterSpacing: 1.5,
-    paddingBottom: spacing[2],
-  },
-  tabTextOn: { color: colors.ink[900], fontWeight: '600' },
-  tabMark: { height: 2, width: 24, backgroundColor: 'transparent' },
-  tabMarkOn: { backgroundColor: colors.ink[900] },
-
-  entry: { flexDirection: 'row', alignItems: 'flex-start' },
-  entryThumb: {
-    width: 68,
-    height: 68,
-    borderRadius: radius.sm,
-    backgroundColor: colors.paper.sunken,
-  },
-  entryThumbEmpty: {
+  avatarCamera: {
+    position: 'absolute',
+    right: 1,
+    bottom: 1,
+    width: 30,
+    height: 30,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
+    ...DS.elevation.lift,
   },
+  identityName: { ...T.display, fontSize: 26, textAlign: 'center' },
+
+  stats: { flexDirection: 'row', gap: spacing[3], marginTop: spacing[4] },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing[4],
+    borderRadius: radius.xl,
+  },
+  // 注意：T.numeral/T.numeralSm 的 fontVariant 是 readonly 元组，直接展开进
+  // StyleSheet.create 会让整张 styles 表的类型退化成联合类型（全文件报 TS2769）。
+  // 展开后就地覆写成可变数组即可。
+  statValue: {
+    ...T.numeral,
+    fontVariant: ['tabular-nums' as const],
+    fontSize: 27,
+    letterSpacing: -0.8,
+  },
+
+  tabs: {
+    flexDirection: 'row',
+    gap: spacing[1],
+    padding: spacing[1],
+    borderRadius: radius.full,
+    backgroundColor: colors.glass.fillSoft,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    marginBottom: spacing[4],
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing[3],
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  tabFill: { borderRadius: radius.full },
+  tabText: {
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: typography.size.body,
+    fontWeight: typography.weight.bold,
+    color: colors.ink[400],
+    letterSpacing: 1.2,
+  },
+  tabTextOn: { color: '#FFFFFF' },
+
+  entry: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing[4],
+  },
+  entryThumb: {
+    width: 74,
+    height: 74,
+    borderRadius: 19,
+    backgroundColor: colors.paper.sunken,
+  },
+  entryThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
   entryThumbMark: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: 20,
-    color: colors.ink[300],
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: 22,
+    fontWeight: typography.weight.bold,
+    color: 'rgba(255,255,255,0.92)',
   },
   entryTitle: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.bodyLg,
-    fontWeight: '600',
-    color: colors.ink[900],
+    ...T.title,
+    fontSize: 17,
     lineHeight: 23,
+    color: colors.ink[900],
   },
   entryStats: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[2],
+    gap: spacing[1] + 2,
     marginTop: spacing[2],
   },
   entryNum: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: typography.size.caption,
-    color: colors.ink[500],
+    ...T.numeralSm,
+    fontVariant: ['tabular-nums' as const],
+    fontSize: 13.5,
     marginRight: spacing[3],
   },
 
-  empty: { alignItems: 'center', paddingVertical: spacing[16] },
-  emptyMark: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: 28,
-    color: colors.rule.strong,
-    marginBottom: spacing[3],
+  empty: {
+    alignItems: 'center',
+    paddingVertical: spacing[12],
+    marginTop: spacing[2],
+  },
+  emptyDot: {
+    width: 46,
+    height: 46,
+    borderRadius: radius.full,
+    opacity: 0.8,
   },
 
   scrim: {
     flex: 1,
-    backgroundColor: 'rgba(26,26,24,0.32)',
+    backgroundColor: 'rgba(62, 40, 48, 0.34)',
     justifyContent: 'center',
     paddingHorizontal: spacing[6],
   },
   sheet: {
-    backgroundColor: colors.paper.raised,
-    borderRadius: radius.sm,
+    borderRadius: radius.xxl,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
     padding: spacing[5],
     maxWidth: 380,
     width: '100%',
     alignSelf: 'center',
     ...DS.elevation.overlay,
   },
-  sheetRow: { paddingVertical: spacing[4] },
-  sheetCancel: { paddingTop: spacing[5], alignItems: 'center' },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[4],
+    borderRadius: radius.lg,
+    backgroundColor: colors.glass.fillStrong,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    marginTop: spacing[3],
+  },
+  sheetRowDanger: { borderColor: colors.glass.borderPink },
+  sheetRowText: {
+    ...T.body,
+    color: colors.ink[700],
+    fontFamily: typography.fontFamily.rounded,
+    fontWeight: typography.weight.semibold,
+  },
+  sheetCancel: { paddingTop: spacing[5], paddingBottom: spacing[1], alignItems: 'center' },
 
   dialog: {
-    backgroundColor: colors.paper.raised,
-    borderRadius: radius.sm,
-    paddingTop: spacing[5],
-    maxWidth: 340,
+    borderRadius: radius.xxl,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    padding: spacing[5],
+    maxWidth: 360,
     width: '100%',
     alignSelf: 'center',
     ...DS.elevation.overlay,
   },
+  dialogField: {
+    marginTop: spacing[5],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[2],
+    borderRadius: radius.xl,
+  },
   dialogInput: {
-    fontFamily: typography.fontFamily.sans,
-    fontSize: typography.size.bodyLg,
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: typography.size.title,
+    fontWeight: typography.weight.semibold,
     color: colors.ink[900],
-    textAlign: 'center',
-    paddingVertical: spacing[5],
-    marginHorizontal: spacing[5],
+    paddingVertical: spacing[2],
     ...noOutline,
   },
-  dialogActions: { flexDirection: 'row' },
-  dialogBtn: { flex: 1, alignItems: 'center', paddingVertical: spacing[4] },
-  dialogBtnDivider: { width: StyleSheet.hairlineWidth, backgroundColor: colors.rule.base },
-  dialogSave: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.bodyLg,
-    fontWeight: '600',
-    color: colors.seal.base,
+  dialogActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    marginTop: spacing[5],
+  },
+  dialogCancel: {
+    paddingVertical: 17,
+    paddingHorizontal: spacing[5],
+    borderRadius: radius.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glass.fillStrong,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
   },
 });

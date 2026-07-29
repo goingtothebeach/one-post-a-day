@@ -1,9 +1,13 @@
 import { View, StyleSheet, type ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import DS from '@/constants/design-system';
 
-const { colors, spacing, ticket } = DS;
+const { colors, gradient, radius, elevation } = DS;
 
-/** 发丝细线。代替阴影做分隔——这套设计语言的主要分层手段。 */
+/**
+ * 柔和分隔线。上一版靠它做主要分层；新语言主要靠留白和卡片，
+ * 所以这里的线刻意做得很淡，只在列表项之间做轻微提示。
+ */
 export function Rule({
   style,
   tone = 'light',
@@ -24,20 +28,23 @@ export function Rule({
   );
 }
 
-/** 双线分隔（刊头下方那种），印刷品常见的强分节。 */
+/**
+ * 上一版刊头下的双线。新语言的刊头是居中柔光标题，不需要双线压边，
+ * 这里退化成单条极淡的线。
+ * @deprecated 新设计用留白代替，保留以兼容既有调用。
+ */
 export function DoubleRule({ style }: { style?: ViewStyle }) {
   return (
     <View style={style}>
-      <View style={[styles.rule, { backgroundColor: colors.rule.strong }]} />
-      <View style={{ height: 2 }} />
       <View style={[styles.rule, { backgroundColor: colors.rule.light }]} />
     </View>
   );
 }
 
 /**
- * 纸车票的黛孔边（抽签页用）。
- * 用一排底色圆点压在票面边缘上模拟撕裂孔，比图片资源轻。
+ * 上一版纸车票的撕裂黛孔。
+ * @deprecated 新语言里抽签卡是毛玻璃卡片，没有票根，渲染成空。
+ * 保留导出只为让仍在 import 的页面继续编译。
  */
 export function Perforation({
   orientation = 'horizontal',
@@ -46,34 +53,46 @@ export function Perforation({
   orientation?: 'horizontal' | 'vertical';
   color?: string;
 }) {
-  const isH = orientation === 'horizontal';
-  const dots = Array.from({ length: 40 });
+  return null;
+}
+
+/**
+ * 毛玻璃卡片 —— 这套语言的主要容器。
+ *
+ * 注意：这里用半透明白底 + 描边 + 柔光阴影模拟毛玻璃，不用 expo-blur 的 BlurView。
+ * 原因是 BlurView 在 RN Web 上要靠 backdrop-filter，Android 上开销明显，
+ * 而背景本身是低频渐变，半透明白已经足够出效果，且到处都能用。
+ */
+export function GlassCard({
+  children,
+  style,
+  tone = 'fill',
+  padded = false,
+}: {
+  children?: React.ReactNode;
+  style?: ViewStyle;
+  /** fill=标准卡片，fillStrong=需要更实的（贴顶栏），fillSoft=次级区块 */
+  tone?: 'fill' | 'fillStrong' | 'fillSoft';
+  padded?: boolean;
+}) {
   return (
     <View
       style={[
-        styles.perfTrack,
-        isH ? styles.perfTrackH : styles.perfTrackV,
+        styles.glass,
+        { backgroundColor: colors.glass[tone] },
+        padded && { padding: DS.spacing[4] },
+        style,
       ]}
-      pointerEvents="none"
     >
-      {dots.map((_, i) => (
-        <View
-          key={i}
-          style={{
-            width: ticket.perforationSize,
-            height: ticket.perforationSize,
-            borderRadius: ticket.perforationSize / 2,
-            backgroundColor: color,
-            marginHorizontal: isH ? ticket.perforationGap / 2 : 0,
-            marginVertical: isH ? 0 : ticket.perforationGap / 2,
-          }}
-        />
-      ))}
+      {children}
     </View>
   );
 }
 
-/** 纸面容器：暖白底 + 细边，不用阴影。 */
+/**
+ * 纸面容器。新语言里等同于毛玻璃卡片。
+ * @deprecated 用 GlassCard，语义更准。
+ */
 export function Sheet({
   children,
   style,
@@ -81,7 +100,23 @@ export function Sheet({
   children?: React.ReactNode;
   style?: ViewStyle;
 }) {
-  return <View style={[styles.sheet, style]}>{children}</View>;
+  return <GlassCard style={style}>{children}</GlassCard>;
+}
+
+/**
+ * 页面背景渐变。铺在每个页面最底层（右上角洒光的那层暖粉）。
+ * 用 absoluteFill，内容照常渲染在上面。
+ */
+export function PageGradient() {
+  return (
+    <LinearGradient
+      colors={gradient.page}
+      start={{ x: 1, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -89,26 +124,10 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     width: '100%',
   },
-  perfTrack: {
-    position: 'absolute',
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  perfTrackH: {
-    left: -spacing[2],
-    right: -spacing[2],
-    justifyContent: 'center',
-  },
-  perfTrackV: {
-    flexDirection: 'column',
-    top: -spacing[2],
-    bottom: -spacing[2],
-    alignItems: 'center',
-  },
-  sheet: {
-    backgroundColor: colors.paper.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
-    borderRadius: DS.radius.sm,
+  glass: {
+    borderRadius: radius.xxl,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    ...elevation.glow,
   },
 });

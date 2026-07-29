@@ -57,13 +57,16 @@ if (fs.existsSync(rootIconSrc)) {
 }
 
 /* ---------- 2. 注入 PWA / iOS 标签 ---------- */
-// theme-color 用纸底色，让 iOS 状态栏与页面背景连成一片。
+// theme-color 必须跟设计系统的页面背景色一致，否则 iOS 加主屏幕后
+// 状态栏那条会露出另一个颜色的带子。这里取 DS.gradient.page 的第一段
+// （右上角洒光的起点，也就是页面最顶部的颜色）。
+// 改设计系统的背景色时，这里要一起改。
 // apple-mobile-web-app-capable 是「添加到主屏幕后全屏运行」的关键。
-// status-bar-style 用 default（浅底深字），配合暖白纸底；black-translucent
+// status-bar-style 用 default（浅底深字），配合暖粉底；black-translucent
 // 会让内容顶到状态栏下面，和我们已有的 use-app-insets 顶部留白冲突。
 const PWA_TAGS = [
   '<link rel="manifest" href="/manifest.json"/>',
-  '<meta name="theme-color" content="#FAF8F3"/>',
+  '<meta name="theme-color" content="#FFF6F1"/>',
   '<meta name="apple-mobile-web-app-capable" content="yes"/>',
   '<meta name="apple-mobile-web-app-status-bar-style" content="default"/>',
   '<meta name="apple-mobile-web-app-title" content="每日一帖"/>',

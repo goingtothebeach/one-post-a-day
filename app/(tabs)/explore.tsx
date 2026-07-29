@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -9,16 +10,24 @@ import {
   Text,
   TouchableOpacity,
   View,
+  type ImageStyle,
 } from 'react-native';
 import { useAppInsets } from '@/hooks/use-app-insets';
 import DS, { text as T } from '@/constants/design-system';
-import { Masthead, Seal, SectionLabel } from '@/components/editorial';
-import { Perforation, Rule } from '@/components/paper';
+import {
+  GradientAvatar,
+  GradientButton,
+  Masthead,
+  Seal,
+  SealTag,
+  SectionLabel,
+} from '@/components/editorial';
+import { GlassCard, PageGradient } from '@/components/paper';
 import { API_BASE } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCountdown } from '../lib/countdown';
 
-const { colors, spacing, radius, typography } = DS;
+const { colors, gradient, spacing, radius, typography, elevation } = DS;
 
 type LotteryStatus = {
   lottery?: {
@@ -35,6 +44,108 @@ type LotteryStatus = {
 // 后端不下发 phone（报名列表所有登录用户可见，无需暴露手机号）
 type TicketUser = { id: number; name?: string | null; avatar?: string | null };
 type TicketItem = { id: number; user: TicketUser };
+
+/** 头像堆叠里最多露出几个，多出来的收进「+N」。 */
+const AVATAR_STACK_MAX = 8;
+
+/**
+ * 纯展示层的拆分：把 formatCountdown 的中文串拆成「时 / 分」两段，
+ * 好让倒计时用大数字卡片呈现（数字是这套语言的情绪点）。
+ *
+ * 注意不要改 app/lib/countdown.ts —— 那里的向下取整问题是踩过的坑（会谎报已截止）。
+ * 这里只认它的输出格式（`3小时20分` / `3小时` / `40分钟`），认不出来就返回 null，
+ * 由调用方整体显示原字符串，绝不自己重算时间。
+ */
+function splitCountdown(value: string): { value: string; unit: string }[] | null {
+  if (!value) return null;
+  const m = value.match(/^(?:(\d+)小时)?(?:(\d+)分钟?)?$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  const parts: { value: string; unit: string }[] = [];
+  if (m[1]) parts.push({ value: m[1], unit: '时' });
+  parts.push({ value: m[2] ?? '0', unit: '分' });
+  return parts;
+}
+
+/** 倒计时：几个独立的毛玻璃小卡片，每个是大号玫粉数字 + 下方单位。 */
+function CountdownCards({ value }: { value: string }) {
+  const parts = splitCountdown(value);
+  if (!parts) {
+    // 认不出格式（例如「已截止」）就原样展示，仍然用大字号
+    return (
+      <View style={styles.countRow}>
+        <GlassCard tone="fillStrong" style={styles.countCardWide}>
+          <Text style={styles.countFallback}>{value}</Text>
+        </GlassCard>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.countRow}>
+      {parts.map((p) => (
+        <GlassCard key={p.unit} tone="fillStrong" style={styles.countCard}>
+          <Text style={styles.countNum}>{p.value}</Text>
+          <Text style={styles.countUnit}>{p.unit}</Text>
+        </GlassCard>
+      ))}
+    </View>
+  );
+}
+
+/** 信息行：半透明白圆角条，左侧浅色 label，右侧玫粉粗体值。 */
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+/**
+ * 头像。有图用图，没图落到渐变圆 + 首字母（GradientAvatar 不收 children，
+ * 所以需要首字母的地方在这里自己拼同一套 gradient.avatar）。
+ */
+function Avatar({
+  uri,
+  name,
+  size,
+  style,
+}: {
+  uri?: string | null;
+  name?: string | null;
+  size: number;
+  /** 用 ImageStyle：它同时能喂给 Image 和 LinearGradient（ViewStyle 的 overflow 更宽，反过来不行） */
+  style?: ImageStyle;
+}) {
+  const shape = {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
+  };
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={[shape, elevation.lift, style]}
+        contentFit="cover"
+      />
+    );
+  }
+  return (
+    <LinearGradient
+      colors={gradient.avatar}
+      start={gradient.diagonal.start}
+      end={gradient.diagonal.end}
+      style={[shape, styles.avatarFallback, elevation.lift, style]}
+    >
+      <Text style={[styles.avatarInitial, { fontSize: Math.round(size * 0.36) }]}>
+        {(name || '?')[0].toUpperCase()}
+      </Text>
+    </LinearGradient>
+  );
+}
 
 export default function ExploreScreen() {
   const { token, user, hydrated } = useAuth();
@@ -165,187 +276,215 @@ export default function ExploreScreen() {
   // 抽签已跑但无人报名 → status='empty'，要和「还没抽」区分开
   const emptyRound = lot?.status === 'empty' || (lot && !lot.winner_user_id && lot.status === 'completed');
 
+  const stackShown = tickets.slice(0, AVATAR_STACK_MAX);
+  const stackOverflow = tickets.length - stackShown.length;
+
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + spacing[4], paddingBottom: spacing[16] },
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      <StatusBar barStyle="dark-content" />
-      <Masthead subtitle="抽　签" />
+    <View style={styles.screen}>
+      <PageGradient />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + spacing[4], paddingBottom: spacing[16] },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <StatusBar barStyle="dark-content" />
+        <Masthead heading="今晚，谁来发声？" subtitle="抽签 · 每晚十八时开签" />
 
-      {/* ── 本期结果 ───────────────────────── */}
-      <SectionLabel style={{ marginTop: spacing[7], marginBottom: spacing[4] }}>
-        本期结果
-      </SectionLabel>
+        {/* ── 本期结果 ───────────────────────── */}
+        <SectionLabel style={{ marginTop: spacing[6], marginBottom: spacing[3] }}>
+          本期结果
+        </SectionLabel>
 
-      <View style={styles.resultBlock}>
-        {drawn ? (
-          <>
-            <View style={styles.winnerRow}>
-              {status?.winner?.avatar ? (
-                <Image source={{ uri: status.winner.avatar }} style={styles.winnerAvatar} contentFit="cover" />
-              ) : (
-                <View style={[styles.winnerAvatar, styles.winnerAvatarEmpty]}>
-                  <Text style={styles.winnerInitial}>
-                    {(status?.winner?.name || '?')[0].toUpperCase()}
+        <GlassCard style={styles.card}>
+          {drawn ? (
+            <>
+              {/* Seal 现在是「今日唯一」渐变胶囊（不再是右侧方印），
+                  所以从行内挪到卡片顶部当徽标用 */}
+              {hasWon ? <Seal style={{ marginBottom: spacing[4] }} /> : null}
+
+              <View style={styles.winnerRow}>
+                <Avatar uri={status?.winner?.avatar} name={status?.winner?.name} size={58} />
+                <View style={styles.winnerCol}>
+                  <Text style={T.label}>{hasWon ? '本期执笔者 · 你' : '本期执笔者'}</Text>
+                  <Text style={styles.winnerName} numberOfLines={1}>
+                    {status?.winner?.name || `用户 #${lot?.winner_user_id}`}
                   </Text>
+                  <Text style={T.caption}>ID · {lot?.winner_user_id}</Text>
                 </View>
-              )}
-              <View style={{ flex: 1, marginLeft: spacing[4] }}>
-                <Text style={T.label}>{hasWon ? '本期执笔者 · 你' : '本期执笔者'}</Text>
-                <Text style={styles.winnerName}>
-                  {status?.winner?.name || `用户 #${lot?.winner_user_id}`}
-                </Text>
-                <Text style={T.caption}>ID · {lot?.winner_user_id}</Text>
               </View>
-              {hasWon ? <Seal size={58} /> : null}
-            </View>
 
-            {hasWon ? (
-              <>
-                <Rule style={{ marginVertical: spacing[5] }} />
-                {canPost ? (
-                  <>
-                    <Text style={T.body}>
-                      {postCountdown && postCountdown !== '已截止'
-                        ? `距发表截止还有 ${postCountdown}`
-                        : '发表时间已过'}
+              {hasWon ? (
+                <>
+                  {canPost ? (
+                    <>
+                      {postCountdown && postCountdown !== '已截止' ? (
+                        <>
+                          <Text style={[T.label, styles.countLabel]}>距发表截止还有</Text>
+                          <CountdownCards value={postCountdown} />
+                        </>
+                      ) : (
+                        <Text style={[T.body, { marginTop: spacing[4] }]}>发表时间已过</Text>
+                      )}
+
+                      {status?.winner_deadline ? (
+                        <InfoRow
+                          label="可发帖至"
+                          value={dayjs(status.winner_deadline).format('M月D日 HH:mm')}
+                        />
+                      ) : null}
+
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => router.push('/')}
+                        style={styles.ctaWrap}
+                      >
+                        <GradientButton label="去 发 表" rich />
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    // 已经发过了就不要再放一个点进去没用的按钮
+                    <Text style={[T.meta, { marginTop: spacing[3] }]}>
+                      你已完成本期发表，感谢执笔。
                     </Text>
-                    <TouchableOpacity
-                      style={styles.primaryBtn}
-                      onPress={() => router.push('/')}
-                    >
-                      <Text style={styles.primaryBtnText}>去 发 表</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  // 已经发过了就不要再放一个点进去没用的按钮
-                  <Text style={T.meta}>你已完成本期发表，感谢执笔。</Text>
-                )}
-              </>
-            ) : null}
-          </>
-        ) : emptyRound ? (
-          <View style={styles.stateBox}>
-            <Text style={styles.stateMark}>—</Text>
-            <Text style={T.body}>本期无人报名</Text>
-            <Text style={[T.caption, { marginTop: spacing[2], textAlign: 'center' }]}>
-              没有人抽中，今天没有帖子。报名下一期吧。
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.stateBox}>
-            <Text style={styles.stateMark}>?</Text>
-            <Text style={T.body}>尚未开签</Text>
-            <Text style={[T.caption, { marginTop: spacing[2], textAlign: 'center' }]}>
-              每晚十八时开签
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* ── 下期报名（纸车票） ───────────────── */}
-      <SectionLabel style={{ marginTop: spacing[8], marginBottom: spacing[4] }}>
-        下期报名
-      </SectionLabel>
-
-      <View style={styles.ticket}>
-        <View style={styles.ticketStub}>
-          <Text style={styles.stubLabel}>开签</Text>
-          <Text style={styles.stubTime}>18:00</Text>
-          <Text style={styles.stubDate}>
-            {nextDrawDate ? dayjs(nextDrawDate).format('M/D') : '—'}
-          </Text>
-        </View>
-
-        <View style={styles.ticketPerf}>
-          <Perforation orientation="vertical" />
-        </View>
-
-        <View style={styles.ticketMain}>
-          <Text style={T.label}>入场券</Text>
-          <Text style={styles.ticketTitle}>
-            {hasJoined ? '已领取' : '尚未领取'}
-          </Text>
-          <Text style={[T.meta, { marginTop: spacing[1] }]}>
-            {drawCountdown && drawCountdown !== '已截止'
-              ? `距开签 ${drawCountdown}`
-              : '即将开签'}
-          </Text>
-
-          <Rule style={{ marginVertical: spacing[4] }} />
-
-          <View style={styles.ticketMeta}>
-            <View>
-              <Text style={T.label}>报名人数</Text>
-              <Text style={styles.ticketNum}>{ticketsLoaded ? tickets.length : '—'}</Text>
-            </View>
-            <View style={{ flex: 1 }} />
-            {hasJoined ? (
-              <View style={styles.joinedMark}>
-                <Text style={styles.joinedMarkText}>已报名</Text>
+                  )}
+                </>
+              ) : null}
+            </>
+          ) : emptyRound ? (
+            <View style={styles.stateBox}>
+              <View style={styles.stateMarkWrap}>
+                <Text style={styles.stateMark}>—</Text>
               </View>
-            ) : (
-              <TouchableOpacity
-                style={[styles.joinBtn, joining && { opacity: 0.5 }]}
-                onPress={joinLottery}
+              <Text style={T.title}>本期无人报名</Text>
+              <Text style={[T.caption, styles.stateHint]}>
+                没有人抽中，今天没有帖子。报名下一期吧。
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.stateBox}>
+              <View style={styles.stateMarkWrap}>
+                <Text style={styles.stateMark}>?</Text>
+              </View>
+              <Text style={T.title}>尚未开签</Text>
+              <Text style={[T.caption, styles.stateHint]}>每晚十八时开签</Text>
+            </View>
+          )}
+        </GlassCard>
+
+        {/* ── 下期报名 ─────────────────────────
+            上一版这里是「纸车票 + 撕裂黛孔」，新语言里改成一张毛玻璃卡片：
+            倒计时数字卡 + 信息行 + 渐变主 CTA。 */}
+        <SectionLabel style={{ marginTop: spacing[7], marginBottom: spacing[3] }}>
+          下期报名
+        </SectionLabel>
+
+        <GlassCard style={styles.card}>
+          <Text style={[T.label, { marginBottom: spacing[3] }]}>距开签</Text>
+          {drawCountdown && drawCountdown !== '已截止' ? (
+            <CountdownCards value={drawCountdown} />
+          ) : (
+            <CountdownCards value="即将开签" />
+          )}
+
+          <InfoRow
+            label="开签时间"
+            value={`18:00 · ${nextDrawDate ? dayjs(nextDrawDate).format('M/D') : '—'}`}
+          />
+          <InfoRow label="报名人数" value={ticketsLoaded ? `${tickets.length} 人` : '—'} />
+          {hasJoined && tickets.length > 0 ? (
+            <InfoRow label="中签概率" value={`1 / ${tickets.length}`} />
+          ) : null}
+          <InfoRow label="入场券" value={hasJoined ? '已领取' : '尚未领取'} />
+
+          {hasJoined ? (
+            <View style={styles.joinedRow}>
+              <SealTag>已报名</SealTag>
+              <Text style={[T.caption, { flex: 1 }]}>等今晚 18:00 开签就好</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={joinLottery}
+              disabled={joining}
+              style={styles.ctaWrap}
+            >
+              <GradientButton
+                label={joining ? '领取中…' : '领取入场券'}
+                rich
                 disabled={joining}
-              >
-                <Text style={styles.joinBtnText}>{joining ? '领取中…' : '领取入场券'}</Text>
-              </TouchableOpacity>
-            )}
+              />
+            </TouchableOpacity>
+          )}
+        </GlassCard>
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
-        </View>
-      </View>
+        ) : null}
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-      {/* ── 报名名单 ─────────────────────────── */}
-      {tickets.length > 0 ? (
-        <>
-          <SectionLabel style={{ marginTop: spacing[8], marginBottom: spacing[4] }}>
-            候选名单
-          </SectionLabel>
-          <View style={styles.roster}>
-            {tickets.map((t) => (
-              <View key={t.id} style={styles.rosterItem}>
-                {t.user.avatar ? (
-                  <Image source={{ uri: t.user.avatar }} style={styles.rosterAvatar} contentFit="cover" />
-                ) : (
-                  <View style={[styles.rosterAvatar, styles.rosterAvatarEmpty]}>
-                    <Text style={styles.rosterInitial}>
-                      {(t.user.name || '?')[0].toUpperCase()}
-                    </Text>
-                  </View>
+        {/* ── 报名名单 ─────────────────────────── */}
+        {tickets.length > 0 ? (
+          <>
+            <SectionLabel style={{ marginTop: spacing[7], marginBottom: spacing[3] }}>
+              候选名单
+            </SectionLabel>
+            <GlassCard style={styles.card}>
+              <View style={styles.stack}>
+                {stackShown.map((t, i) =>
+                  t.user.avatar ? (
+                    <Avatar
+                      key={t.id}
+                      uri={t.user.avatar}
+                      name={t.user.name}
+                      size={42}
+                      style={i === 0 ? undefined : styles.stackOverlap}
+                    />
+                  ) : (
+                    <GradientAvatar
+                      key={t.id}
+                      size={42}
+                      style={i === 0 ? undefined : styles.stackOverlap}
+                    />
+                  )
                 )}
-                <Text
-                  style={[
-                    styles.rosterName,
-                    t.user.id === user?.id && { color: colors.seal.base, fontWeight: '600' },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {t.user.id === user?.id ? '你' : t.user.name || `#${t.user.id}`}
-                </Text>
+                {stackOverflow > 0 ? (
+                  <View style={[styles.stackMore, styles.stackOverlap]}>
+                    <Text style={styles.stackMoreText}>+{stackOverflow}</Text>
+                  </View>
+                ) : null}
               </View>
-            ))}
-          </View>
-        </>
-      ) : null}
 
-      <Text style={styles.colophon}>
-        每晚 18:00 抽签　中签者获当日唯一发表权　有效至次日 18:00
-      </Text>
-    </ScrollView>
+              <Text style={styles.rosterNames} numberOfLines={3}>
+                {tickets.map((t, i) => (
+                  <Text
+                    key={t.id}
+                    style={t.user.id === user?.id ? styles.rosterNameSelf : undefined}
+                  >
+                    {(t.user.id === user?.id ? '你' : t.user.name || `#${t.user.id}`) +
+                      (i < tickets.length - 1 ? '　·　' : '')}
+                  </Text>
+                ))}
+              </Text>
+            </GlassCard>
+          </>
+        ) : null}
+
+        <Text style={styles.colophon}>
+          每晚 18:00 抽签　中签者获当日唯一发表权　有效至次日 18:00
+        </Text>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // 背景交给 PageGradient；paper.base 只做兜底，渐变铺在它上面
   screen: { flex: 1, backgroundColor: colors.paper.base },
+  scroll: { flex: 1, backgroundColor: 'transparent' },
   content: {
     paddingHorizontal: spacing[5],
     maxWidth: 640,
@@ -353,165 +492,172 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
 
-  resultBlock: {
-    backgroundColor: colors.paper.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
-    borderRadius: radius.sm,
-    padding: spacing[5],
-  },
+  /* 卡片：毛玻璃 + 大圆角，内边距统一 */
+  card: { padding: spacing[5] },
+
+  /* 中签者 */
   winnerRow: { flexDirection: 'row', alignItems: 'center' },
-  winnerAvatar: { width: 52, height: 52, borderRadius: radius.full },
-  winnerAvatarEmpty: {
-    backgroundColor: colors.paper.sunken,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  winnerInitial: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.title,
-    color: colors.ink[500],
-  },
+  winnerCol: { flex: 1, marginLeft: spacing[4] },
   winnerName: {
     ...T.title,
-    marginTop: 2,
-    marginBottom: 1,
-  },
-  stateBox: { alignItems: 'center', paddingVertical: spacing[8] },
-  stateMark: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: 30,
-    color: colors.rule.strong,
-    marginBottom: spacing[3],
+    marginTop: 3,
+    marginBottom: 2,
   },
 
-  /* 纸车票 */
-  ticket: {
-    flexDirection: 'row',
-    backgroundColor: colors.paper.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.rule.strong,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-  },
-  ticketStub: {
-    width: 84,
+  /* 倒计时：一排独立的小卡片，数字是情绪点 */
+  countLabel: { marginTop: spacing[5] },
+  countRow: { flexDirection: 'row', gap: spacing[3], marginTop: spacing[3] },
+  countCard: {
+    width: 72,
+    borderRadius: 19,
+    paddingVertical: spacing[3],
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing[5],
-    backgroundColor: colors.paper.sunken,
+    ...elevation.lift,
   },
-  stubLabel: {
-    ...T.label,
-    fontSize: 10,
-  },
-  stubTime: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: 19,
-    color: colors.ink[900],
-    marginTop: spacing[1],
-  },
-  stubDate: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: typography.size.caption,
-    color: colors.ink[500],
-    marginTop: 2,
-  },
-  ticketPerf: { width: 1, backgroundColor: colors.rule.base, position: 'relative' },
-  ticketMain: { flex: 1, padding: spacing[5] },
-  ticketTitle: { ...T.title, marginTop: 2 },
-  ticketMeta: { flexDirection: 'row', alignItems: 'flex-end' },
-  ticketNum: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: 24,
-    color: colors.ink[900],
-    marginTop: 2,
-  },
-  joinBtn: {
-    backgroundColor: colors.ink[900],
-    borderRadius: radius.sm,
+  countCardWide: {
+    borderRadius: 19,
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[5],
-  },
-  joinBtnText: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.footnote,
-    fontWeight: typography.weight.semibold,
-    color: colors.paper.raised,
-    letterSpacing: 2,
-  },
-  joinedMark: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.seal.base,
-    backgroundColor: colors.seal.tint,
-    borderRadius: radius.sm,
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[4],
-  },
-  joinedMarkText: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.footnote,
-    color: colors.seal.deep,
-    letterSpacing: 1.5,
-  },
-
-  primaryBtn: {
-    marginTop: spacing[4],
-    backgroundColor: colors.ink[900],
-    borderRadius: radius.sm,
-    paddingVertical: spacing[4],
     alignItems: 'center',
+    ...elevation.lift,
   },
-  primaryBtnText: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.bodyLg,
+  // 注意：T.numeral / T.numeralSm 的 fontVariant 是 readonly 元组，直接展开进
+  // StyleSheet.create 会让整张 styles 表的类型退化成联合类型（全文件报 TS2769）。
+  // 展开后就地覆写成可变数组即可。
+  countNum: {
+    ...T.numeral,
+    fontVariant: ['tabular-nums' as const],
+    lineHeight: 36,
+  },
+  countUnit: {
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: typography.size.caption,
     fontWeight: typography.weight.semibold,
-    color: colors.paper.raised,
-    letterSpacing: 4,
+    color: colors.ink[400],
+    marginTop: 2,
+  },
+  // 认不出格式时走这里，内容是中文状态词（「已截止」「即将开签」）而不是数字。
+  // 所以不套 T.numeral 的玫粉大数字样式 —— 数字才是情绪点，中文状态词用标题样式就够，
+  // 否则一张「数字卡」里塞四个中文字会很怪。
+  countFallback: {
+    ...T.title,
+    color: colors.seal.deep,
+    textAlign: 'center',
+    lineHeight: 30,
   },
 
-  /* 名单 */
-  roster: {
+  /* 信息行 */
+  infoRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[4],
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.glass.fillSoft,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    marginTop: spacing[3],
   },
-  rosterItem: { alignItems: 'center', width: 56 },
-  rosterAvatar: { width: 40, height: 40, borderRadius: radius.full },
-  rosterAvatarEmpty: {
-    backgroundColor: colors.paper.sunken,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
+  infoLabel: {
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.footnote,
+    color: colors.ink[400],
+  },
+  infoValue: {
+    ...T.numeralSm,
+    fontVariant: ['tabular-nums' as const],
+    marginLeft: spacing[3],
+  },
+
+  /* 主 CTA：渐变胶囊 + 粉色发光（GradientButton 自带），外面只负责触摸与间距 */
+  ctaWrap: { marginTop: spacing[5] },
+
+  joinedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+    marginTop: spacing[5],
+  },
+
+  /* 空态 / 未开签 */
+  stateBox: { alignItems: 'center', paddingVertical: spacing[6] },
+  stateMarkWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: radius.full,
+    backgroundColor: colors.seal.tint,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: spacing[4],
   },
-  rosterInitial: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.body,
-    color: colors.ink[500],
+  stateMark: {
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: 26,
+    fontWeight: typography.weight.heavy,
+    color: colors.seal.base,
   },
-  rosterName: {
-    fontFamily: typography.fontFamily.sans,
-    fontSize: typography.size.micro,
-    color: colors.ink[500],
-    marginTop: spacing[2],
-    maxWidth: 56,
-    textAlign: 'center',
+  stateHint: { marginTop: spacing[2], textAlign: 'center' },
+
+  /* 头像 */
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: {
+    fontFamily: typography.fontFamily.rounded,
+    fontWeight: typography.weight.heavy,
+    color: '#FFFFFF',
   },
 
+  /* 报名者头像堆叠 */
+  stack: { flexDirection: 'row', alignItems: 'center', paddingLeft: 2 },
+  stackOverlap: { marginLeft: -11 },
+  stackMore: {
+    width: 42,
+    height: 42,
+    borderRadius: radius.full,
+    backgroundColor: colors.glass.fillStrong,
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...elevation.lift,
+  },
+  stackMoreText: {
+    fontFamily: typography.fontFamily.numeral,
+    fontSize: typography.size.caption,
+    fontWeight: typography.weight.heavy,
+    color: colors.seal.base,
+  },
+  rosterNames: {
+    ...T.meta,
+    marginTop: spacing[4],
+    lineHeight: 22,
+  },
+  rosterNameSelf: {
+    color: colors.seal.base,
+    fontWeight: typography.weight.bold,
+  },
+
+  errorBox: {
+    marginTop: spacing[4],
+    backgroundColor: colors.seal.tint,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
   errorText: {
     fontFamily: typography.fontFamily.sans,
     fontSize: typography.size.footnote,
     color: colors.state.error,
-    marginTop: spacing[4],
   },
   colophon: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.caption,
-    color: colors.ink[400],
+    ...T.caption,
     textAlign: 'center',
-    marginTop: spacing[12],
-    letterSpacing: 1,
-    lineHeight: 20,
+    marginTop: spacing[10],
+    letterSpacing: 0.6,
+    lineHeight: 21,
   },
 });

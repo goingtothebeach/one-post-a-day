@@ -7,6 +7,7 @@ import MoreHorizontal from 'lucide-react-native/dist/esm/icons/ellipsis.js';
 import dayjs from 'dayjs';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -27,14 +28,25 @@ import {
 } from 'react-native';
 import { useAppInsets } from '@/hooks/use-app-insets';
 import DS, { noOutline, text as T } from '@/constants/design-system';
-import { Masthead, SealTag, SectionLabel, Seal } from '@/components/editorial';
-import { Rule } from '@/components/paper';
+import {
+  GradientAvatar,
+  GradientButton,
+  Masthead,
+  Seal,
+  SectionLabel,
+} from '@/components/editorial';
+import { GlassCard, PageGradient } from '@/components/paper';
 import { API_BASE } from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCountdown } from '../lib/countdown';
 import { buildObjectKey, getSts, uploadToOss } from '../lib/oss';
 
-const { colors, spacing, radius, typography } = DS;
+const { colors, gradient, spacing, radius, typography } = DS;
+
+/** 卡片外圈留白：图片贴着这层白边，像照片放在相框里 */
+const CARD_PAD = 6;
+/** 图片圆角。比卡片圆角小一点，视觉上才是「嵌进去」的 */
+const PLATE_RADIUS = 23;
 
 type FeedItem = {
   id: number;
@@ -244,6 +256,9 @@ export default function HomeScreen() {
 
   const { width: screenWidth } = useWindowDimensions();
   const contentWidth = Math.min(screenWidth, 640) - spacing[5] * 2;
+  // 图片在卡片内部，要扣掉卡片的 1px 描边和 CARD_PAD 的白边，
+  // 否则横向 pagingEnabled 的翻页宽度会和图片宽度错开，轮播会停在半张图上。
+  const plateWidth = contentWidth - CARD_PAD * 2 - 2;
 
   const createPost = async () => {
     if (!token) return;
@@ -339,18 +354,21 @@ export default function HomeScreen() {
   if (!hydrated) {
     return (
       <View style={[styles.screen, styles.center]}>
+        <PageGradient />
         <Text style={T.dateline}>正在取回今日刊物…</Text>
       </View>
     );
   }
 
-  /* ---------------------------- 登录：一封邀请函 ---------------------------- */
+  /* ------------------------- 登录：柔光邀请卡 ------------------------- */
   if (!token) {
+    const codeDisabled = countdown > 0 || sendingCode || !phone;
     return (
       <KeyboardAvoidingView
         style={styles.screen}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
+        <PageGradient />
         <StatusBar barStyle="dark-content" />
         <ScrollView
           contentContainerStyle={[styles.loginScroll, { paddingTop: insets.top + spacing[16] }]}
@@ -358,71 +376,65 @@ export default function HomeScreen() {
         >
           <View style={styles.loginInner}>
             <Text style={[T.masthead, { textAlign: 'center' }]}>ONE POST A DAY</Text>
-            <View style={styles.loginRuleWrap}>
-              <Rule tone="strong" />
-            </View>
-            <Text style={styles.loginLede}>
-              每日仅一人执笔
-            </Text>
+            <Text style={styles.loginLede}>每日仅一人执笔</Text>
             <Text style={[T.meta, styles.loginSub]}>
               每晚 18:00 抽签，中签者获得当日唯一的发表权
             </Text>
 
             <View style={styles.loginForm}>
-              <Text style={T.label}>手机号</Text>
-              <TextInput
-                placeholder="11 位手机号"
-                placeholderTextColor={colors.ink[400]}
-                style={styles.fieldInput}
-                value={phone}
-                onChangeText={(t) => {
-                  setPhone(t);
-                  setLoginError('');
-                }}
-                keyboardType="phone-pad"
-                maxLength={11}
-              />
-              <Rule />
-
-              <Text style={[T.label, { marginTop: spacing[5] }]}>验证码</Text>
-              <View style={styles.codeRow}>
+              <GlassCard style={styles.field}>
+                <Text style={T.label}>手机号</Text>
                 <TextInput
-                  placeholder="6 位验证码"
+                  placeholder="11 位手机号"
                   placeholderTextColor={colors.ink[400]}
-                  style={[styles.fieldInput, { flex: 1 }]}
-                  value={code}
+                  style={styles.fieldInput}
+                  value={phone}
                   onChangeText={(t) => {
-                    setCode(t);
+                    setPhone(t);
                     setLoginError('');
                   }}
-                  keyboardType="number-pad"
-                  maxLength={6}
+                  keyboardType="phone-pad"
+                  maxLength={11}
                 />
-                <TouchableOpacity
-                  onPress={requestOtp}
-                  disabled={countdown > 0 || sendingCode || !phone}
-                  style={styles.codeBtn}
-                >
-                  <Text
-                    style={[
-                      styles.codeBtnText,
-                      (countdown > 0 || sendingCode || !phone) && { color: colors.ink[300] },
-                    ]}
+              </GlassCard>
+
+              <GlassCard style={styles.fieldSecond}>
+                <Text style={T.label}>验证码</Text>
+                <View style={styles.codeRow}>
+                  <TextInput
+                    placeholder="6 位验证码"
+                    placeholderTextColor={colors.ink[400]}
+                    style={[styles.fieldInput, { flex: 1 }]}
+                    value={code}
+                    onChangeText={(t) => {
+                      setCode(t);
+                      setLoginError('');
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                  />
+                  <TouchableOpacity
+                    onPress={requestOtp}
+                    disabled={codeDisabled}
+                    activeOpacity={0.85}
+                    style={[styles.codePill, codeDisabled && styles.codePillDisabled]}
                   >
-                    {sendingCode ? '发送中' : countdown > 0 ? `${countdown}s` : '获取验证码'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <Rule />
+                    <Text style={[styles.codePillText, codeDisabled && { color: colors.ink[300] }]}>
+                      {sendingCode ? '发送中' : countdown > 0 ? `${countdown}s` : '获取验证码'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </GlassCard>
 
               {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
 
               <TouchableOpacity
-                style={[styles.primaryBtn, loggingIn && styles.primaryBtnDisabled]}
                 onPress={verifyOtp}
                 disabled={loggingIn}
+                activeOpacity={0.9}
+                style={{ marginTop: spacing[8] }}
               >
-                <Text style={styles.primaryBtnText}>{loggingIn ? '登录中…' : '进 入'}</Text>
+                <GradientButton rich disabled={loggingIn} label={loggingIn ? '登录中…' : '进 入'} />
               </TouchableOpacity>
 
               <Text style={[T.caption, { textAlign: 'center', marginTop: spacing[4] }]}>
@@ -443,66 +455,16 @@ export default function HomeScreen() {
     const activeIdx = activeMap[item.id] ?? 0;
 
     return (
-      <View style={styles.article}>
-        {today ? (
-          <View style={styles.todayBadgeRow}>
-            <SealTag>今日唯一发表</SealTag>
-          </View>
-        ) : null}
-
-        <Text style={styles.articleTitle}>{item.title}</Text>
-
-        <View style={styles.bylineRow}>
-          {item.author?.avatar ? (
-            <Image source={{ uri: item.author.avatar }} style={styles.byAvatar} contentFit="cover" />
-          ) : (
-            <View style={[styles.byAvatar, styles.byAvatarEmpty]}>
-              <Text style={styles.byAvatarInitial}>
-                {(item.author?.name || '?')[0].toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <Text style={styles.byName}>{item.author?.name || '匿名'}</Text>
-          <Text style={styles.byDot}>·</Text>
-          <Text style={T.meta}>{dayjs(item.publishDate).format('M月D日')}</Text>
-          <View style={{ flex: 1 }} />
-          {canDelete ? (
-            <TouchableOpacity
-              hitSlop={10}
-              onPress={() => {
-                const doDelete = () =>
-                  fetch(`${API_BASE}/post/${item.id}`, {
-                    method: 'DELETE',
-                    headers: authHeaders,
-                  }).then(refreshAll);
-                if (Platform.OS === 'ios') {
-                  ActionSheetIOS.showActionSheetWithOptions(
-                    { options: ['取消', '删除'], destructiveButtonIndex: 1, cancelButtonIndex: 0 },
-                    (i) => i === 1 && doDelete()
-                  );
-                } else {
-                  Alert.alert('删除这篇？', '删除后无法恢复。', [
-                    { text: '取消', style: 'cancel' },
-                    { text: '删除', style: 'destructive', onPress: doDelete },
-                  ]);
-                }
-              }}
-            >
-              <MoreHorizontal size={18} color={colors.ink[400]} strokeWidth={1.75} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <Text style={styles.articleBody}>{item.content}</Text>
-
-        {imagesSorted.length > 0 ? (
-          <View style={styles.plateWrap}>
+      <GlassCard style={styles.article}>
+        {/* 图片区在最上方。没有图片时用渐变占位，卡片才不会因为纯文字塌成一块白 */}
+        <View style={styles.plateWrap}>
+          {imagesSorted.length > 0 ? (
             <ScrollView
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               onScroll={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / contentWidth);
+                const idx = Math.round(e.nativeEvent.contentOffset.x / plateWidth);
                 setActiveMap((prev) => ({ ...prev, [item.id]: idx }));
               }}
               scrollEventThrottle={16}
@@ -516,140 +478,226 @@ export default function HomeScreen() {
                   <Image
                     source={{ uri: img.url }}
                     style={{
-                      width: contentWidth,
+                      width: plateWidth,
                       aspectRatio: img.width && img.height ? img.width / img.height : 4 / 5,
-                      backgroundColor: colors.paper.sunken,
+                      backgroundColor: colors.peach.tint,
                     }}
                     contentFit="cover"
                   />
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            {imagesSorted.length > 1 ? (
-              <Text style={styles.plateCounter}>
+          ) : item.mediaUrl ? (
+            <TouchableOpacity
+              activeOpacity={0.94}
+              onPress={() => router.push({ pathname: '/image', params: { uri: item.mediaUrl } })}
+            >
+              <Image
+                source={{ uri: item.mediaUrl }}
+                style={{
+                  width: plateWidth,
+                  aspectRatio:
+                    item.mediaWidth && item.mediaHeight ? item.mediaWidth / item.mediaHeight : 4 / 5,
+                  backgroundColor: colors.peach.tint,
+                }}
+                contentFit="cover"
+              />
+            </TouchableOpacity>
+          ) : (
+            // 纯文字帖：用一条比照片矮得多的渐变横幅占位。
+            // 不用 4:3 —— 那样一块和真实照片同尺寸的彩色渐变容易被当成加载失败的图。
+            <LinearGradient
+              colors={gradient.photo}
+              start={gradient.diagonal.start}
+              end={gradient.diagonal.end}
+              style={{ width: plateWidth, aspectRatio: 21 / 9 }}
+            />
+          )}
+
+          {/* 图片底部压暗，保证浮在上面的白字/胶囊可读。
+              只有真的有东西浮在上面时才铺，否则纯文字帖的矮横幅会白挂一条暗带。 */}
+          {today || imagesSorted.length > 1 ? (
+            <LinearGradient
+              colors={gradient.photoScrim}
+              start={gradient.down.start}
+              end={gradient.down.end}
+              style={styles.plateScrim}
+              pointerEvents="none"
+            />
+          ) : null}
+          {today ? (
+            <View style={styles.plateSeal} pointerEvents="none">
+              <Seal label="今日唯一" />
+            </View>
+          ) : null}
+
+          {imagesSorted.length > 1 ? (
+            <View style={styles.plateCounter} pointerEvents="none">
+              <Text style={styles.plateCounterText}>
                 {activeIdx + 1} / {imagesSorted.length}
               </Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.articleBodyWrap}>
+          <View style={styles.bylineRow}>
+            {item.author?.avatar ? (
+              <Image source={{ uri: item.author.avatar }} style={styles.byAvatar} contentFit="cover" />
+            ) : (
+              <GradientAvatar size={38} />
+            )}
+            <View style={styles.byText}>
+              <Text style={styles.byName}>{item.author?.name || '匿名'}</Text>
+              <Text style={T.meta}>{dayjs(item.publishDate).format('M月D日')}</Text>
+            </View>
+            {canDelete ? (
+              <TouchableOpacity
+                hitSlop={10}
+                style={styles.moreBtn}
+                onPress={() => {
+                  const doDelete = () =>
+                    fetch(`${API_BASE}/post/${item.id}`, {
+                      method: 'DELETE',
+                      headers: authHeaders,
+                    }).then(refreshAll);
+                  if (Platform.OS === 'ios') {
+                    ActionSheetIOS.showActionSheetWithOptions(
+                      { options: ['取消', '删除'], destructiveButtonIndex: 1, cancelButtonIndex: 0 },
+                      (i) => i === 1 && doDelete()
+                    );
+                  } else {
+                    Alert.alert('删除这篇？', '删除后无法恢复。', [
+                      { text: '取消', style: 'cancel' },
+                      { text: '删除', style: 'destructive', onPress: doDelete },
+                    ]);
+                  }
+                }}
+              >
+                <MoreHorizontal size={18} color={colors.ink[400]} strokeWidth={2} />
+              </TouchableOpacity>
             ) : null}
           </View>
-        ) : item.mediaUrl ? (
-          <TouchableOpacity
-            activeOpacity={0.94}
-            style={styles.plateWrap}
-            onPress={() => router.push({ pathname: '/image', params: { uri: item.mediaUrl } })}
-          >
-            <Image
-              source={{ uri: item.mediaUrl }}
-              style={{
-                width: contentWidth,
-                aspectRatio:
-                  item.mediaWidth && item.mediaHeight ? item.mediaWidth / item.mediaHeight : 4 / 5,
-                backgroundColor: colors.paper.sunken,
+
+          <Text style={styles.articleTitle}>{item.title}</Text>
+          <Text style={styles.articleText}>{item.content}</Text>
+
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={async () => {
+                try {
+                  await fetch(`${API_BASE}/post/${item.id}/like`, { method: 'POST', headers });
+                  await loadFeed();
+                } catch {}
               }}
-              contentFit="cover"
-            />
-          </TouchableOpacity>
-        ) : null}
+            >
+              <LinearGradient
+                colors={gradient.primary}
+                start={gradient.diagonal.start}
+                end={gradient.diagonal.end}
+                style={styles.actionPrimary}
+              >
+                <Heart
+                  size={17}
+                  strokeWidth={2.25}
+                  color="#FFFFFF"
+                  fill={item.is_liked ? '#FFFFFF' : 'transparent'}
+                />
+                <Text style={styles.actionPrimaryNum}>{item.likes_count || 0}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.action}
-            onPress={async () => {
-              try {
-                await fetch(`${API_BASE}/post/${item.id}/like`, { method: 'POST', headers });
-                await loadFeed();
-              } catch {}
-            }}
-          >
-            <Heart
-              size={17}
-              strokeWidth={1.75}
-              color={item.is_liked ? colors.ink[900] : colors.ink[400]}
-              fill={item.is_liked ? colors.ink[900] : 'transparent'}
-            />
-            <Text style={[styles.actionNum, item.is_liked && { color: colors.ink[900] }]}>
-              {item.likes_count || 0}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.action}
-            onPress={async () => {
-              try {
-                await fetch(`${API_BASE}/post/${item.id}/favorite`, { method: 'POST', headers });
-                await loadFeed();
-              } catch {}
-            }}
-          >
-            <Bookmark
-              size={17}
-              strokeWidth={1.75}
-              color={item.is_favorited ? colors.ink[900] : colors.ink[400]}
-              fill={item.is_favorited ? colors.ink[900] : 'transparent'}
-            />
-            <Text style={[styles.actionNum, item.is_favorited && { color: colors.ink[900] }]}>
-              {item.favorites_count || 0}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={styles.actionGhost}
+              onPress={async () => {
+                try {
+                  await fetch(`${API_BASE}/post/${item.id}/favorite`, { method: 'POST', headers });
+                  await loadFeed();
+                } catch {}
+              }}
+            >
+              <Bookmark
+                size={17}
+                strokeWidth={2.25}
+                color={colors.seal.base}
+                fill={item.is_favorited ? colors.seal.base : 'transparent'}
+              />
+              <Text style={styles.actionGhostNum}>{item.favorites_count || 0}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </GlassCard>
     );
   };
 
   const composer = canPostToday ? (
-    <View style={styles.composer}>
-      <View style={styles.composerHead}>
-        <Seal size={54} />
-        <View style={{ flex: 1, marginLeft: spacing[4] }}>
-          <Text style={T.title}>今日由你执笔</Text>
-          <Text style={[T.meta, { marginTop: 2 }]}>
-            {postCountdown === '已截止'
-              ? '发表时间已过'
-              : postCountdown
-              ? `距截止还有 ${postCountdown}`
-              : '　'}
-          </Text>
-        </View>
+    <GlassCard style={styles.composer}>
+      <Seal label="今日唯一" />
+      <Text style={[T.title, { marginTop: spacing[3] }]}>今日由你执笔</Text>
+
+      <View style={styles.infoRow}>
+        <Text style={styles.infoLabel}>距离截止</Text>
+        <Text style={styles.infoValue}>
+          {postCountdown === '已截止' ? '发表时间已过' : postCountdown ? postCountdown : '—'}
+        </Text>
       </View>
 
-      <Rule style={{ marginVertical: spacing[4] }} />
+      <View style={styles.inputBlock}>
+        <Text style={T.label}>标题</Text>
+        <TextInput
+          placeholder="给今天起个名字"
+          placeholderTextColor={colors.ink[400]}
+          style={styles.composerTitle}
+          value={title}
+          onChangeText={setTitle}
+          maxLength={100}
+        />
+      </View>
 
-      <TextInput
-        placeholder="标题"
-        placeholderTextColor={colors.ink[400]}
-        style={styles.composerTitle}
-        value={title}
-        onChangeText={setTitle}
-        maxLength={100}
-      />
-      <TextInput
-        placeholder="今天想说的话…"
-        placeholderTextColor={colors.ink[400]}
-        style={styles.composerBody}
-        multiline
-        value={content}
-        onChangeText={setContent}
-        maxLength={2000}
-      />
-
-      <View style={styles.composerFoot}>
-        <TouchableOpacity style={styles.attachBtn} onPress={pickImages} disabled={uploading}>
-          <ImagePlus size={16} color={colors.ink[500]} strokeWidth={1.75} />
-          <Text style={styles.attachText}>
-            {uploading ? '上传中…' : images.length ? `已选 ${images.length} 张` : '配图（最多 6 张）'}
-          </Text>
-        </TouchableOpacity>
-        <View style={{ flex: 1 }} />
-        <Text style={T.caption}>{content.length}/2000</Text>
+      <View style={[styles.inputBlock, { marginTop: spacing[3] }]}>
+        <Text style={T.label}>正文</Text>
+        <TextInput
+          placeholder="今天想说的话…"
+          placeholderTextColor={colors.ink[400]}
+          style={styles.composerBody}
+          multiline
+          value={content}
+          onChangeText={setContent}
+          maxLength={2000}
+        />
+        <Text style={styles.composerCount}>{content.length}/2000</Text>
       </View>
 
       <TouchableOpacity
-        style={[styles.primaryBtn, publishing && styles.primaryBtnDisabled]}
+        style={styles.attachBtn}
+        onPress={pickImages}
+        disabled={uploading}
+        activeOpacity={0.85}
+      >
+        <LinearGradient
+          colors={gradient.primary}
+          start={gradient.diagonal.start}
+          end={gradient.diagonal.end}
+          style={styles.attachIcon}
+        >
+          <ImagePlus size={18} color="#FFFFFF" strokeWidth={2.25} />
+        </LinearGradient>
+        <Text style={styles.attachText}>
+          {uploading ? '上传中…' : images.length ? `已选 ${images.length} 张` : '添加照片（最多 6 张）'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         onPress={createPost}
         disabled={publishing}
+        activeOpacity={0.9}
+        style={{ marginTop: spacing[5] }}
       >
-        <Text style={styles.primaryBtnText}>{publishing ? '发表中…' : '发 表'}</Text>
+        <GradientButton rich disabled={publishing} label={publishing ? '发表中…' : '发 表'} />
       </TouchableOpacity>
-    </View>
+    </GlassCard>
   ) : null;
 
   return (
@@ -657,12 +705,14 @@ export default function HomeScreen() {
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <PageGradient />
       <StatusBar barStyle="dark-content" />
       <FlatList
         data={feed}
         keyExtractor={(i) => String(i.id)}
         renderItem={renderPost}
-        ItemSeparatorComponent={() => <Rule tone="base" style={{ marginVertical: spacing[7] }} />}
+        // 卡片自带边界，之间只留空气，不再用分隔线
+        ItemSeparatorComponent={() => <View style={{ height: spacing[5] }} />}
         contentContainerStyle={[
           styles.list,
           { paddingTop: insets.top + spacing[4], paddingBottom: spacing[16] },
@@ -671,7 +721,7 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refreshAll}
-            tintColor={colors.ink[400]}
+            tintColor={colors.seal.base}
           />
         }
         ListHeaderComponent={
@@ -680,7 +730,7 @@ export default function HomeScreen() {
             {composer}
             {feedError ? <Text style={styles.errorText}>{feedError}</Text> : null}
             {feed.length > 0 ? (
-              <SectionLabel style={{ marginTop: spacing[7], marginBottom: spacing[5] }}>
+              <SectionLabel style={{ marginTop: spacing[7], marginBottom: spacing[4] }}>
                 往期
               </SectionLabel>
             ) : null}
@@ -688,13 +738,18 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           !refreshing ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyMark}>—</Text>
-              <Text style={[T.body, { textAlign: 'center' }]}>今日还没有人执笔</Text>
+            <GlassCard style={styles.empty}>
+              <LinearGradient
+                colors={gradient.photo}
+                start={gradient.diagonal.start}
+                end={gradient.diagonal.end}
+                style={styles.emptyOrb}
+              />
+              <Text style={[T.title, { textAlign: 'center' }]}>今日还没有人执笔</Text>
               <Text style={[T.caption, { textAlign: 'center', marginTop: spacing[2] }]}>
                 每晚十八时抽签，中签者可发表当日唯一一篇
               </Text>
-            </View>
+            </GlassCard>
           ) : null
         }
         showsVerticalScrollIndicator={false}
@@ -704,6 +759,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 背景渐变铺在 PageGradient 里，这里的底色只是渐变没挂上时的兜底
   screen: { flex: 1, backgroundColor: colors.paper.base },
   center: { alignItems: 'center', justifyContent: 'center' },
   list: {
@@ -716,44 +772,53 @@ const styles = StyleSheet.create({
   /* 登录 */
   loginScroll: { flexGrow: 1, paddingHorizontal: spacing[6], paddingBottom: spacing[10] },
   loginInner: { width: '100%', maxWidth: 400, alignSelf: 'center' },
-  loginRuleWrap: { marginTop: spacing[4], marginBottom: spacing[8] },
   loginLede: {
     ...T.display,
     textAlign: 'center',
-    letterSpacing: 2,
+    marginTop: spacing[4],
   },
   loginSub: { textAlign: 'center', marginTop: spacing[3], lineHeight: 22 },
-  loginForm: { marginTop: spacing[12] },
+  loginForm: { marginTop: spacing[10] },
+  field: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[3],
+  },
+  // GlassCard 的 style 是单个 ViewStyle（不接数组），所以第二个输入框单独开一条
+  fieldSecond: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[3],
+    marginTop: spacing[4],
+  },
   fieldInput: {
-    fontFamily: typography.fontFamily.sans,
-    fontSize: typography.size.bodyLg,
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: typography.size.title,
+    fontWeight: typography.weight.semibold,
     color: colors.ink[900],
-    paddingVertical: spacing[3],
+    letterSpacing: 0.4,
+    paddingVertical: spacing[2],
     ...noOutline,
   },
-  codeRow: { flexDirection: 'row', alignItems: 'center' },
-  codeBtn: { paddingVertical: spacing[3], paddingLeft: spacing[4] },
-  codeBtnText: {
-    fontFamily: typography.fontFamily.sans,
-    fontSize: typography.size.footnote,
-    color: colors.seal.base,
-    fontWeight: typography.weight.medium,
+  codeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[3] },
+  codePill: {
+    backgroundColor: colors.seal.tint,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
   },
-
-  primaryBtn: {
-    marginTop: spacing[8],
-    backgroundColor: colors.ink[900],
-    borderRadius: radius.sm,
-    paddingVertical: spacing[4],
-    alignItems: 'center',
+  codePillDisabled: {
+    backgroundColor: colors.glass.fillSoft,
+    borderColor: colors.glass.border,
   },
-  primaryBtnDisabled: { backgroundColor: colors.ink[300] },
-  primaryBtnText: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: typography.size.bodyLg,
-    fontWeight: typography.weight.semibold,
-    color: colors.paper.raised,
-    letterSpacing: 4,
+  codePillText: {
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: typography.size.caption,
+    fontWeight: typography.weight.bold,
+    color: colors.seal.deep,
+    letterSpacing: 0.3,
   },
   errorText: {
     fontFamily: typography.fontFamily.sans,
@@ -765,108 +830,214 @@ const styles = StyleSheet.create({
 
   /* 发表器 */
   composer: {
-    marginTop: spacing[6],
-    backgroundColor: colors.paper.raised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
-    borderRadius: radius.sm,
+    marginTop: spacing[5],
     padding: spacing[5],
   },
-  composerHead: { flexDirection: 'row', alignItems: 'center' },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing[4],
+    backgroundColor: colors.glass.fillSoft,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
+  infoLabel: { ...T.caption },
+  // 不用 ...T.numeralSm 展开：它带一个 readonly fontVariant 元组，
+  // 展开进 StyleSheet.create 会让整张表的类型推断退化成 TextStyle|ViewStyle|ImageStyle，
+  // 于是文件里每个 style={} 都开始报 TS2769。这里显式写字段。
+  infoValue: {
+    fontFamily: typography.fontFamily.numeral,
+    fontSize: typography.size.bodyLg,
+    fontWeight: typography.weight.heavy,
+    color: colors.seal.base,
+    fontVariant: ['tabular-nums'] as const,
+  },
+  inputBlock: {
+    marginTop: spacing[4],
+    backgroundColor: colors.glass.fillSoft,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[3],
+  },
   composerTitle: {
-    fontFamily: typography.fontFamily.serif,
+    fontFamily: typography.fontFamily.rounded,
     fontSize: typography.size.title,
-    fontWeight: typography.weight.semibold,
+    fontWeight: typography.weight.bold,
     color: colors.ink[900],
+    letterSpacing: typography.tracking.tight,
     paddingVertical: spacing[2],
     ...noOutline,
   },
   composerBody: {
     fontFamily: typography.fontFamily.sans,
     fontSize: typography.size.body,
-    lineHeight: typography.size.body * 1.7,
+    lineHeight: typography.size.body * typography.leading.normal,
     color: colors.ink[700],
-    minHeight: 96,
+    minHeight: 104,
     paddingVertical: spacing[2],
     textAlignVertical: 'top',
     ...noOutline,
   },
-  composerFoot: {
+  composerCount: { ...T.caption, textAlign: 'right' },
+  // 不用 borderStyle:'dashed'：RN Web 上 dashed 和 borderRadius 同时用时各浏览器
+  // 表现不一致（Safari 会在圆角处把虚线切断），而且虚线框是表单 dropzone 的语言，
+  // 跟「层次靠柔光和大圆角」的调性冲突。改成半透明白实底 + 一圈浅粉实线。
+  attachBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing[3],
+    gap: spacing[3],
+    marginTop: spacing[4],
+    backgroundColor: colors.glass.fillSoft,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
   },
-  attachBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing[2] },
+  attachIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...DS.elevation.lift,
+  },
   attachText: {
-    fontFamily: typography.fontFamily.sans,
+    fontFamily: typography.fontFamily.rounded,
     fontSize: typography.size.footnote,
-    color: colors.ink[500],
+    fontWeight: typography.weight.semibold,
+    color: colors.seal.deep,
   },
 
-  /* 文章 */
-  article: {},
-  todayBadgeRow: { flexDirection: 'row', marginBottom: spacing[3] },
-  articleTitle: {
-    ...T.headline,
-    lineHeight: typography.size.headline * 1.3,
+  /* 帖子卡片 */
+  article: { padding: CARD_PAD },
+  plateWrap: {
+    borderRadius: PLATE_RADIUS,
+    overflow: 'hidden',
+    backgroundColor: colors.peach.tint,
   },
-  bylineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing[3],
-    gap: spacing[2],
+  plateScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 96,
   },
-  byAvatar: { width: 22, height: 22, borderRadius: radius.full },
-  byAvatarEmpty: {
-    backgroundColor: colors.paper.sunken,
+  plateSeal: {
+    position: 'absolute',
+    top: spacing[3],
+    left: spacing[3],
+  },
+  plateCounter: {
+    position: 'absolute',
+    bottom: spacing[3],
+    right: spacing[3],
+    backgroundColor: 'rgba(62, 40, 48, 0.42)',
+    borderRadius: radius.full,
+    paddingHorizontal: spacing[3],
+    paddingVertical: 3,
+  },
+  plateCounterText: {
+    fontFamily: typography.fontFamily.numeral,
+    fontSize: typography.size.micro,
+    fontWeight: typography.weight.bold,
+    color: '#FFFFFF',
+    letterSpacing: 0.6,
+    fontVariant: ['tabular-nums'] as const,
+  },
+  articleBodyWrap: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[4],
+  },
+  bylineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing[3] },
+  byAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.full,
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
+  },
+  byText: { flex: 1 },
+  byName: {
+    fontFamily: typography.fontFamily.rounded,
+    fontSize: typography.size.body,
+    fontWeight: typography.weight.bold,
+    color: colors.ink[700],
+  },
+  moreBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.full,
+    backgroundColor: colors.glass.fillSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  byAvatarInitial: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: 11,
-    color: colors.ink[500],
-  },
-  byName: {
-    fontFamily: typography.fontFamily.sans,
-    fontSize: typography.size.footnote,
-    fontWeight: typography.weight.medium,
-    color: colors.ink[700],
-  },
-  byDot: { color: colors.ink[300] },
-  articleBody: {
-    ...T.bodyRelaxed,
+  articleTitle: {
+    ...T.headline,
     marginTop: spacing[4],
   },
-  plateWrap: {
-    marginTop: spacing[5],
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.paper.edge,
-  },
-  plateCounter: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: typography.size.micro,
-    color: colors.ink[400],
-    textAlign: 'center',
-    paddingVertical: spacing[2],
+  articleText: {
+    ...T.body,
+    marginTop: spacing[2],
   },
   actionRow: {
     flexDirection: 'row',
-    gap: spacing[7],
+    alignItems: 'center',
+    gap: spacing[3],
     marginTop: spacing[5],
   },
-  action: { flexDirection: 'row', alignItems: 'center', gap: spacing[2] },
-  actionNum: {
-    fontFamily: typography.fontFamily.mono,
-    fontSize: typography.size.footnote,
-    color: colors.ink[500],
+  actionPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    borderRadius: radius.full,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[3],
+    ...DS.elevation.glowPink,
+  },
+  actionPrimaryNum: {
+    fontFamily: typography.fontFamily.numeral,
+    fontSize: typography.size.bodyLg,
+    fontWeight: typography.weight.heavy,
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'] as const,
+  },
+  actionGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    backgroundColor: colors.glass.fillStrong,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing[5],
+    paddingVertical: spacing[3],
+  },
+  actionGhostNum: {
+    fontFamily: typography.fontFamily.numeral,
+    fontSize: typography.size.bodyLg,
+    fontWeight: typography.weight.heavy,
+    color: colors.seal.base,
+    fontVariant: ['tabular-nums'] as const,
   },
 
-  empty: { paddingVertical: spacing[16], alignItems: 'center' },
-  emptyMark: {
-    fontFamily: typography.fontFamily.serif,
-    fontSize: 32,
-    color: colors.rule.strong,
-    marginBottom: spacing[4],
+  empty: {
+    marginTop: spacing[4],
+    paddingVertical: spacing[12],
+    paddingHorizontal: spacing[6],
+    alignItems: 'center',
+  },
+  emptyOrb: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.full,
+    marginBottom: spacing[5],
+    ...DS.elevation.lift,
   },
 });

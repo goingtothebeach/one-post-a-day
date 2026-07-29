@@ -37,7 +37,9 @@ export default function ImageViewer() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#111110',
+    // 看图页刻意保持深底（让照片本身跳出来），但用带红调的暖深色，
+    // 而不是中性黑——跟整体的暖粉调性是同一家族。
+    backgroundColor: '#2A1A20',
   },
   closeButton: {
     position: 'absolute',
@@ -45,7 +47,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(26, 26, 24, 0.55)',
+    backgroundColor: 'rgba(62, 40, 48, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
