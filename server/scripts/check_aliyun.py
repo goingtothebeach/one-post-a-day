@@ -169,58 +169,28 @@ def main() -> int:
             failures += 1
 
     # ---- 5. 短信（号码认证服务）----
+    # 这一项【无法在不真发短信的前提下确诊】。
+    # 教训：用非法号码（00000000000）或未分配号段（13000000000）探测时，
+    # 接口一律返回 code=UNKNOWN——因为运营商无法送达、回执失败。
+    # 这个 UNKNOWN 与「配置错误」的 UNKNOWN 无法区分，
+    # 曾据此误判成「融合认证未开通 / 签名模板不配套」，实际配置是好的。
+    # 所以这里只做静态检查，真实性验证请用真实手机号手动跑一次。
     print("\n【5】短信 / 号码认证服务 PNVS")
     if v.get("DEV_FAKE_OTP") == "1":
         line(SKIP, "本地模式 DEV_FAKE_OTP=1，验证码固定 123456，无需短信服务")
-    elif not (ak and sk and v.get("ALIYUN_SMS_SIGN_NAME") and v.get("ALIYUN_SMS_TEMPLATE_CODE")):
-        line(SKIP, "跳过（缺少签名或模板）")
     else:
-        try:
-            from alibabacloud_dypnsapi20170525.client import Client as Pns
-            from alibabacloud_dypnsapi20170525 import models as pm
-            from alibabacloud_tea_openapi import models as om
-
-            cfg = om.Config(
-                access_key_id=ak, access_key_secret=sk, endpoint="dypnsapi.aliyuncs.com"
-            )
-            body = Pns(cfg).send_sms_verify_code(
-                pm.SendSmsVerifyCodeRequest(
-                    phone_number="00000000000",  # 非法号码，确保不会真发
-                    country_code="86",
-                    sign_name=v["ALIYUN_SMS_SIGN_NAME"],
-                    template_code=v["ALIYUN_SMS_TEMPLATE_CODE"],
-                    template_param=json.dumps({"code": "000000", "min": "5"}),
-                    scheme_name=v.get("ALIYUN_SMS_SCHEME") or None,
-                )
-            ).body
-            code = str(body.code)
-            if code in ("OK",):
-                line(FAIL, "非法号码竟然发送成功了", "请检查是否用了真实号码")
-                failures += 1
-            elif "MOBILE" in code.upper() or "PHONE" in code.upper() or "PARAM" in code.upper():
-                # 被参数校验拦下 = 鉴权和产品开通都过了
-                line(OK, "鉴权与产品开通正常", f"（被号码校验拦下：{code}）")
-            elif code == "UNKNOWN":
-                line(FAIL, "返回 UNKNOWN（无详细信息）")
-                failures += 1
-                hint("最常见原因：未开启「融合认证」功能。")
-                hint("去号码认证服务控制台开启，否则该接口不返回具体错误。")
-                hint("另外确认用的是【系统赠送签名】+【配套的赠送模板】。")
-            else:
-                line(FAIL, "接口可达但返回异常", f"{code}: {body.message}")
-                failures += 1
-        except Exception as e:
-            s = str(e)
-            line(FAIL, "调用失败")
+        sign = v.get("ALIYUN_SMS_SIGN_NAME")
+        tpl = v.get("ALIYUN_SMS_TEMPLATE_CODE")
+        if not (sign and tpl):
+            line(FAIL, "缺少签名或模板", "ALIYUN_SMS_SIGN_NAME / ALIYUN_SMS_TEMPLATE_CODE")
             failures += 1
-            if "FUNCTION_NOT_OPENED" in s:
-                hint("未开启「融合认证」功能，去号码认证服务控制台开启")
-            elif "Inactive" in s or "NotFound" in s:
-                hint("先解决密钥问题")
-            elif "Forbidden" in s or "NotAuthorized" in s:
-                hint("产品未开通，或 RAM 用户缺少 dypns 权限")
-            else:
-                hint(s[:150])
+        else:
+            line(OK, "签名与模板已配置", f"{sign} / {tpl}")
+            hint("注意：签名必须来自控制台「赠送签名配置」页，")
+            hint("且必须搭配【赠送模板】使用（自定义签名会被运营商拒发）。")
+            hint("是否真能送达只能用【真实手机号】验证——非法号码一律返回 UNKNOWN：")
+            hint(f'  curl -X POST https://api.onedayapost.fun/auth/request-otp \\')
+            hint(f'    -H "Content-Type: application/json" -d \'{{"phone":"你的手机号"}}\'')
 
     # ---- 6. 数据库 ----
     print("\n【6】数据库")
