@@ -55,7 +55,7 @@ if [[ $SWAP_MB -lt 512 && $MEM_MB -lt 4096 ]]; then
   if [[ ! -f /swapfile ]]; then
     fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
     chmod 600 /swapfile
-    mkswap -q /swapfile
+    mkswap /swapfile >/dev/null
     swapon /swapfile
     grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
     # 有 swap 但优先用物理内存：数据库场景不希望频繁换出
@@ -105,8 +105,18 @@ CNF
   ok "已写入 MySQL 小内存配置（缓冲池 64M，max_connections 30）"
 fi
 
-say "4/8 拉取代码"
-if [[ -d $APP_DIR/.git ]]; then
+say "4/8 代码"
+# 代码可以来自两种方式：
+#   a) git clone/pull（需要仓库可访问；私有仓库要 Deploy Key）
+#   b) 本地 rsync 推上来（跳过 git，设 SKIP_GIT=1）
+# 判断依据：目录里已经有 server/main.py 就认为是 rsync 上来的，不动它。
+if [[ "${SKIP_GIT:-0}" == "1" ]] || [[ -f $APP_DIR/server/main.py && ! -d $APP_DIR/.git ]]; then
+  if [[ -f $APP_DIR/server/main.py ]]; then
+    ok "使用已存在的代码（rsync 方式），跳过 git"
+  else
+    echo "SKIP_GIT=1 但 $APP_DIR/server/main.py 不存在，请先 rsync 代码"; exit 1
+  fi
+elif [[ -d $APP_DIR/.git ]]; then
   git -C "$APP_DIR" fetch --quiet origin "$BRANCH"
   git -C "$APP_DIR" reset --hard --quiet "origin/$BRANCH"
   ok "已更新到 origin/$BRANCH"
