@@ -17,9 +17,13 @@ class AuthResponse(BaseModel):
 
 class PostImageIn(BaseModel):
     url: str
-    width: Optional[int]
-    height: Optional[int]
-    sort: Optional[int]
+    # 必须写 `= None`：Pydantic v2 里 `Optional[int]` 不带默认值仍是**必填**
+    # （只是允许传 null）。少了默认值，任何一张取不到尺寸的图都会让
+    # POST /post 直接 422 —— 而 web 端的 Alert 是空函数，用户什么都看不到，
+    # 只觉得「发布按钮点了没反应」。sort 同理。
+    width: Optional[int] = None
+    height: Optional[int] = None
+    sort: Optional[int] = None
 
 class PostCreate(BaseModel):
     # 长度上限与 DB 列宽（title 200 / content 2000）对齐，避免超长直接 500

@@ -71,6 +71,28 @@ type LotteryStatus = {
   status: string;
 } | null;
 
+/**
+ * 把后端的 detail 字段转成一句人能看懂的话。
+ *
+ * FastAPI 的 422 里 detail 是一个数组（每个元素是 {loc, msg, type}），
+ * 直接塞进模板字符串会显示成 [object Object]；而 403/400 的 detail 是普通字符串。
+ * 两种都要能显示，否则用户拿到的提示等于没有。
+ */
+function describeDetail(detail: unknown): string {
+  if (!detail) return '未知错误';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d: any) => {
+        const field = Array.isArray(d?.loc) ? d.loc[d.loc.length - 1] : undefined;
+        return [field, d?.msg].filter(Boolean).join(' ');
+      })
+      .filter(Boolean);
+    if (msgs.length) return msgs.join('；');
+  }
+  return '未知错误';
+}
+
 type LotteryResponse = {
   lottery: LotteryStatus;
   winner_deadline?: string | null;
@@ -105,6 +127,10 @@ export default function HomeScreen() {
   const [sendingCode, setSendingCode] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
+  // 发帖/上传的错误必须显示在页面里，不能用 Alert.alert：
+  // react-native-web 的 Alert 是空实现（`static alert() {}`），线上 bundle 里也确实是空的。
+  // 之前中签者遇到 422/403/上传失败时，界面毫无反应，只看得见「发布按钮点了没用」。
+  const [composerError, setComposerError] = useState('');
 
   const headers = useMemo<Record<string, string>>(
     () =>
@@ -263,8 +289,9 @@ export default function HomeScreen() {
   const createPost = async () => {
     if (!token) return;
     if (publishing) return; // 防连点：一天只能有一帖，重复提交会撞后端唯一约束
+    setComposerError('');
     if (!title.trim() || !content.trim()) {
-      Alert.alert('无法发布', '标题和内容都不能为空');
+      setComposerError('标题和内容都不能为空');
       return;
     }
     setPublishing(true);
@@ -285,10 +312,10 @@ export default function HomeScreen() {
         await loadLottery(); // 刷新 can_post，发完就收起表单
       } else {
         const data = await res.json().catch(() => ({}));
-        Alert.alert('发布失败', `${res.status}: ${data.detail || '未知错误'}`);
+        setComposerError(`发布失败（${res.status}）：${describeDetail(data.detail)}`);
       }
     } catch (e: any) {
-      Alert.alert('发布失败', e?.message || '网络错误');
+      setComposerError(`发布失败：${e?.message || '网络错误'}`);
     } finally {
       setPublishing(false);
     }
@@ -302,6 +329,7 @@ export default function HomeScreen() {
       selectionLimit: 6,
     });
     if (res.canceled || !res.assets?.length) return;
+    setComposerError('');
     setUploading(true);
     try {
       const sts = await getSts(token || undefined);
@@ -325,7 +353,7 @@ export default function HomeScreen() {
       setMediaWidth(undefined);
       setMediaHeight(undefined);
       setImages([]);
-      Alert.alert('图片上传失败', e?.message || '请重试');
+      setComposerError(`图片上传失败：${e?.message || '请重试'}。可以先只发文字。`);
     } finally {
       setUploading(false);
     }
@@ -566,6 +594,14 @@ export default function HomeScreen() {
                       { options: ['取消', '删除'], destructiveButtonIndex: 1, cancelButtonIndex: 0 },
                       (i) => i === 1 && doDelete()
                     );
+                  } else if (Platform.OS === 'web') {
+                    // Alert.alert 在 react-native-web 上是空实现，带按钮的确认框
+                    // 根本不会弹——点「删除」会毫无反应。用浏览器原生 confirm 兜底，
+                    // 删帖是不可逆操作，必须真的问一次。
+                    const ok =
+                      typeof window !== 'undefined' &&
+                      window.confirm('删除这篇？删除后无法恢复。');
+                    if (ok) doDelete();
                   } else {
                     Alert.alert('删除这篇？', '删除后无法恢复。', [
                       { text: '取消', style: 'cancel' },
@@ -688,6 +724,12 @@ export default function HomeScreen() {
           {uploading ? '上传中…' : images.length ? `已选 ${images.length} 张` : '添加照片（最多 6 张）'}
         </Text>
       </TouchableOpacity>
+
+      {composerError ? (
+        <View style={styles.composerError}>
+          <Text style={styles.composerErrorText}>{composerError}</Text>
+        </View>
+      ) : null}
 
       <TouchableOpacity
         onPress={createPost}
@@ -906,6 +948,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...DS.elevation.lift,
+  },
+  composerError: {
+    marginTop: spacing[4],
+    backgroundColor: colors.seal.tint,
+    borderWidth: 1,
+    borderColor: colors.glass.borderPink,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+  },
+  composerErrorText: {
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.footnote,
+    color: colors.state.error,
+    lineHeight: typography.size.footnote * 1.55,
   },
   attachText: {
     fontFamily: typography.fontFamily.rounded,
