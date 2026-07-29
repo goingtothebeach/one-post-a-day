@@ -29,10 +29,14 @@ fi
 [[ -f dist/index.html ]] || { echo "dist/index.html 不存在，先构建"; exit 1; }
 
 echo "上传到 $SSH_USER@$HOST:$WEB_DIR …"
-ssh "$SSH_USER@$HOST" "sudo mkdir -p $WEB_DIR && sudo chown -R \$(id -un):\$(id -gn) $WEB_DIR"
+ssh "$SSH_USER@$HOST" "sudo mkdir -p $WEB_DIR"
 
+# 远端用 sudo 接收：目录归属是 www-data，普通用户写不进去。
+# （曾因此失败：上一次部署 chown 成 www-data 后，下一次 rsync 全部 Permission denied）
 # --delete 清掉上一版的旧 bundle，避免磁盘里堆积无用的 entry-*.js
-rsync -az --delete \
+# --omit-dir-times 避免对根目录 set times 报错
+rsync -az --delete --omit-dir-times \
+  --rsync-path="sudo rsync" \
   --exclude '.DS_Store' \
   dist/ "$SSH_USER@$HOST:$WEB_DIR/"
 

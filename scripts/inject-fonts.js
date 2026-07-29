@@ -44,6 +44,18 @@ for (const name of icons) {
   }
 }
 
+// iOS 加到主屏幕时会【先】请求根路径的 /apple-touch-icon.png，
+// 不看 head 里的 link 标签。这些文件不存在时，nginx 的 SPA 兜底会把
+// index.html 返回给它，iOS 拿 HTML 当 PNG 解析失败 → 主屏幕显示灰色占位图标。
+// 所以在根路径放真文件（precomposed 是老设备的变体，一并提供）。
+const rootIconSrc = path.join(root, 'assets', 'images', 'pwa-180.png');
+if (fs.existsSync(rootIconSrc)) {
+  for (const name of ['apple-touch-icon.png', 'apple-touch-icon-precomposed.png']) {
+    fs.copyFileSync(rootIconSrc, path.join(distDir, name));
+    copiedIcons++;
+  }
+}
+
 /* ---------- 2. 注入 PWA / iOS 标签 ---------- */
 // theme-color 用纸底色，让 iOS 状态栏与页面背景连成一片。
 // apple-mobile-web-app-capable 是「添加到主屏幕后全屏运行」的关键。
