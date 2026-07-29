@@ -3,7 +3,7 @@
 **最后更新**: 2026-04-10  
 **项目状态**: 前后端均已上线，持续迭代中  
 **GitHub**: https://github.com/goingtothebeach/one-post-a-day.git  
-**前端地址**: https://onedayapost.fun  
+**前端地址**: https://onedayapost.fun（自建服务器，已弃用 Vercel）  
 **后端地址**: https://api.onedayapost.fun（阿里云香港 47.243.211.168，已上线）
 
 ---
@@ -20,7 +20,7 @@
 
 | 层 | 技术 | 部署 |
 |----|------|------|
-| 前端 | React Native + Expo（static export） | Vercel（https://onedayapost.fun） |
+| 前端 | React Native + Expo（static export） | 自建服务器 nginx 静态站（https://onedayapost.fun） |
 | 后端 | FastAPI + SQLAlchemy | 香港/境外 VPS（systemd + nginx 反代） |
 | 数据库 | MySQL 8.0 | 服务器本机自建 |
 | 图片存储 | 阿里云 OSS | 北京区域，bucket `onedayapost-media` |
@@ -36,8 +36,11 @@ cd /Users/guoyixuan03/Documents/one-post-a-day
 npx expo export -p web
 node scripts/inject-fonts.js
 
-# 构建 + 部署（完整流程）
-npx expo export -p web && node scripts/inject-fonts.js && git add -f dist/ && git commit -m "..." && git push origin main
+# 部署前端（构建 + 上传到自建服务器 + 验证）
+./deploy/push-web.sh
+
+# 部署后端
+./deploy/push-code.sh
 
 # 启动本地后端
 cd server && uvicorn main:app --reload --port 4000
@@ -72,7 +75,10 @@ cd server && uvicorn main:app --reload --port 4000
   1. 注入 MaterialIcons `@font-face`（现已改用 lucide，但保留以防兼容）
   2. 将所有 HTML 的 `__EXPO_ROUTER_HYDRATE__=true` 改为 `false`（禁用 SSR hydration，修复 Tab active 错位）
 - `dist/` 需要 `git add -f` 强制追踪
-- Vercel 通过 `vercel.json` 按路由 serve 对应 HTML（`/profile` → `profile.html`，`/explore` → `explore.html`，其他 → `index.html`）
+- 路由：expo-router 的 static export 为每个路由生成独立 HTML，
+  nginx 按 `/profile` → `profile.html`、`/explore` → `explore.html` 精确映射
+  （见 `deploy/web.nginx.conf`）。**不能一律回退 index.html** —— 那样会拿到首页的壳。
+  `vercel.json` 保留着仅作参考，已不再使用
 
 ### PWA（添加到主屏幕）
 - `web/manifest.json` + `scripts/inject-fonts.js` 注入 iOS/PWA 标签
@@ -237,14 +243,21 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 
 ## 后端部署（香港/境外 VPS）
 
-**背景**：Railway 上的应用已删除（数据库随之丢失），前端仍在 Vercel。
+**背景**：Railway 上的应用已删除（数据库随之丢失）。前端原在 Vercel，现也迁到本机。
 后端需要重新部署。选香港/境外的理由：无需备案，且相比美东延迟明显更低。
 
 ⚠️ 部署脚本只依赖 Ubuntu 22.04 + Python + MySQL + nginx，**不绑定阿里云**。
 换成腾讯云/Vultr/Hetzner 等任何 VPS 都能直接用，可按价格自由选。
 
-**架构**：前端 Vercel（onedayapost.fun）→ 后端 ECS（api.onedayapost.fun）→ 本机 MySQL + 阿里云 OSS。
-⚠️ 与旧方案不同：**nginx 只反代 API，不再 serve 前端**（前端由 Vercel 托管）。
+**架构**：一台香港 VPS 同时承载前端静态站（onedayapost.fun）与后端 API（api.onedayapost.fun），数据库本机 MySQL，图片存阿里云 OSS。
+⚠️ **前端也已迁到这台服务器**（原先在 Vercel）。一台机器两个站：
+`onedayapost.fun` → 静态文件（`deploy/web.nginx.conf`），
+`api.onedayapost.fun` → 反代 127.0.0.1:4000（`deploy/api.nginx.conf`）。
+
+**为什么弃用 Vercel**：账号登不上，且它从 7/28 13:20 起就停止部署——
+线上一直是旧 bundle，这是首屏 10+ 秒的真正原因（不是代码不够快）。
+迁到自建后：冷启动 2.16s、热启动 0.25s，且 Vercel 上一直没生效的
+强缓存配置在 nginx 里正常工作。
 
 ### 当前部署（2026-07-29 已上线）
 
@@ -258,7 +271,8 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 | 证书 | Let's Encrypt，至 2026-10-26，certbot 自动续期 |
 | 小内存调优 | 2G swapfile（swappiness=10）+ `/etc/mysql/mysql.conf.d/zz-small-memory.cnf`（缓冲池 64M） |
 
-**更新后端代码**：`./deploy/push-code.sh`（rsync + 自动重启 + 验 /health）
+**更新后端**：`./deploy/push-code.sh`（rsync + 重启 + 验 /health）
+**更新前端**：`./deploy/push-web.sh`（构建 + inject-fonts + rsync + 验证）
 **排查阿里云配置**：`ssh admin@47.243.211.168 'cd /opt/onedayapost/server && sudo /opt/onedayapost/venv/bin/python scripts/check_aliyun.py /etc/onedayapost.env'`
 
 ### 部署资产
@@ -292,6 +306,9 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 | `http2 on;` | 那是 nginx 1.25+ 的独立指令，Ubuntu 22.04 自带 1.18，遇到会报 unknown directive 并**拒绝启动** | 改回 `listen 443 ssl http2;` |
 | certbot 造成重定向死循环 | 证书未签发时配置里只有 HTTP 段，`certbot --nginx` 把 443 监听插进了那个「无条件 301 跳 HTTPS」的 server 块，于是 HTTPS 也被 301 到 HTTPS | 签发证书后重新装回仓库里的完整配置 |
 | systemd 段放错 | `StartLimitIntervalSec` / `StartLimitBurst` 属于 `[Unit]` 段，写在 `[Service]` 会被忽略并打 "Unknown key name" | 已移到 `[Unit]` |
+| SPA 兜底吃掉资源请求 | iOS 加主屏幕先请求根路径 `/apple-touch-icon.png`（不看 head 标签），文件不存在时 nginx 兜底返回 `index.html`，iOS 拿 HTML 当 PNG 解析失败 → 桌面显示灰色占位图标 | 根目录放真文件；静态资源扩展名一律不走兜底、找不到就 404 |
+| rsync 第二次必然失败 | `push-web.sh` 首次部署把目录 chown 成 www-data，第二次跑就全部 Permission denied | 改用 `--rsync-path="sudo rsync"` + `--omit-dir-times` |
+| nginx 重复 Cache-Control | `expires 1y` 与 `add_header Cache-Control` 会各生成一条响应头 | 只保留 `add_header`（能带 immutable） |
 | `$USER` 变量冲突 | `push-code.sh` 里 `${USER:-admin}` 拿到的是**本机登录用户名**（`USER` 是 shell 内置变量），SSH 用错账号 | 改用 `SSH_USER` |
 
 ### 短信 UNKNOWN 的教训（重要）
