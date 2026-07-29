@@ -2,8 +2,8 @@
 /**
  * 生成 PWA 图标（柔光甜美版）。
  *
- * 上一版图标是「朱红方印 + 衬线『日』+ 米白底 + 直角」，那是「纸墨日刊」的语言。
- * 改版后整体是暖粉渐变 + 大圆角 + 圆润字，旧图标放在主屏幕上会明显是另一套东西。
+ * App 名叫「聚光灯」—— 一天只有一个人被照亮，明天灯就打到别人身上。
+ * 图标就是这三个字压在暖粉渐变上。
  *
  * 为什么用 Chrome 渲染 HTML 而不是引 sharp/canvas：
  * 项目里没有图形库依赖，为了 4 张图标装一个原生模块不值得；
@@ -12,18 +12,24 @@
  * 用法：node scripts/make-icons.js
  * 产出：assets/images/pwa-{180,192,512}.png + pwa-maskable-512.png
  *
- * 注意 maskable 版本：Android 会把图标裁成圆形/圆角方形等各种形状，
- * 安全区是中心 80% 的圆。所以 maskable 版的「日」要画得更小、渐变铺满整个画布，
- * 不能留白边——否则被裁掉一圈后会看起来偏移。
+ * 两条硬约束（都是踩出来的）：
+ * 1. **整张图必须不透明、铺满、不留圆角**。iOS 不支持 apple-touch-icon 的 alpha 通道，
+ *    任何透明像素都会被合成为黑色，主屏幕上就是一圈黑框。圆角交给系统裁。
+ * 2. maskable 版会被 Android 裁成圆形/水滴等形状，安全区是中心 80% 的圆，
+ *    所以字要更小 —— 三个字横排比单字更容易顶到边，别照抄普通版的字号。
  */
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const zlib = require('zlib');
 
 const root = path.join(__dirname, '..');
 const outDir = path.join(root, 'assets', 'images');
+
+/** 图标上的字。改 App 名时改这里，然后重跑本脚本。 */
+const GLYPH = '聚光灯';
 
 const CHROME =
   process.env.CHROME_PATH ||
@@ -36,26 +42,27 @@ if (!fs.existsSync(CHROME)) {
 
 /**
  * @param {number} size 画布边长
- * @param {boolean} maskable Android maskable 版：渐变铺满 + 字更小
+ * @param {boolean} maskable Android maskable 版：字更小，留足被裁的余量
  */
 function html(size, maskable) {
-  // 圆角：普通版留白边 + 大圆角（iOS 会自己再裁一次圆角，所以这里的圆角只影响
-  // Android 和浏览器标签页）；maskable 版必须铺满，圆角交给系统裁。
-  const pad = maskable ? 0 : size * 0.06;
-  const radius = maskable ? 0 : size * 0.22;
-  const box = size - pad * 2;
-  // maskable 安全区是中心 80% 圆，字号相应收小
-  const glyph = maskable ? size * 0.40 : size * 0.52;
+  // 渐变必须铺满整个画布，不留白边、不加圆角。
+  //
+  // 这是踩过的坑：之前给普通版留了 6% 白边 + 22% 圆角，配合透明背景截图，
+  // 四角和四边就成了全透明像素。而 **iOS 不支持 apple-touch-icon 的 alpha 通道**，
+  // 会把透明区域合成为黑色 —— 加到主屏幕后图标周围一圈黑框。
+  // 圆角本来就该交给系统裁（iOS 和 Android 都会自己裁），我们只负责给一张
+  // 完全不透明的方图。
+  const glyph = maskable ? size * 0.195 : size * 0.225;
+  // maskable 安全区是中心 80% 的圆，三个字横排的对角点不能超出去
+  const shadowY = size * 0.012;
+  const shadowBlur = size * 0.045;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:${size}px; height:${size}px; background:transparent; }
-  .wrap {
-    width:${size}px; height:${size}px; padding:${pad}px;
-    display:flex; align-items:center; justify-content:center;
-  }
+  /* body 也铺同一个渐变的主色：万一有半像素边缘，也是不透明的粉色而不是透明 */
+  html,body { width:${size}px; height:${size}px; background:#FF9BA5; }
   .tile {
-    width:${box}px; height:${box}px; border-radius:${radius}px;
+    width:${size}px; height:${size}px;
     background:
       radial-gradient(at 78% 16%, #FFD9BE 0%, transparent 54%),
       radial-gradient(at 20% 84%, #E7C4F0 0%, transparent 52%),
@@ -65,19 +72,20 @@ function html(size, maskable) {
   }
   /* 右上角一层柔光，跟 App 内「光从右上洒进来」一致 */
   .tile::before {
-    content:''; position:absolute; width:${box * 0.9}px; height:${box * 0.9}px;
-    border-radius:50%; top:${-box * 0.34}px; right:${-box * 0.30}px;
+    content:''; position:absolute; width:${size * 0.9}px; height:${size * 0.9}px;
+    border-radius:50%; top:${-size * 0.34}px; right:${-size * 0.30}px;
     background:radial-gradient(circle, rgba(255,255,255,.55), transparent 68%);
   }
   .glyph {
     position:relative;
     font-family:"SF Pro Rounded","Arial Rounded MT Bold","PingFang SC",-apple-system,sans-serif;
     font-size:${glyph}px; font-weight:800; color:#FFFFFF; line-height:1;
-    letter-spacing:-${glyph * 0.02}px;
-    text-shadow:0 ${size * 0.012}px ${size * 0.045}px rgba(150, 60, 90, .30);
+    letter-spacing:-${glyph * 0.04}px;
+    white-space:nowrap;
+    text-shadow:0 ${shadowY}px ${shadowBlur}px rgba(150, 60, 90, .30);
   }
 </style></head><body>
-  <div class="wrap"><div class="tile"><span class="glyph">日</span></div></div>
+  <div class="tile"><span class="glyph">${GLYPH}</span></div>
 </body></html>`;
 }
 
@@ -101,7 +109,9 @@ for (const t of TARGETS) {
       '--headless',
       '--disable-gpu',
       '--hide-scrollbars',
-      '--default-background-color=00000000', // 透明背景，别填白
+      // 刻意用不透明白底兜底（而不是 00000000 透明）：
+      // 透明背景 + 任何留白都会让 iOS 把边缘渲染成黑色。
+      '--default-background-color=FFFFFFFF',
       `--window-size=${t.size},${t.size}`,
       `--screenshot=${outPath}`,
       `file://${htmlPath}`,
@@ -114,5 +124,68 @@ for (const t of TARGETS) {
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log('\n图标已更新。web/manifest.json 和 scripts/inject-fonts.js 里的 theme-color');
-console.log('要跟 DS.gradient.page 的第一段保持一致（当前 #FFF6F1）。');
+
+/* ---------- 自检：四角必须不透明 ---------- */
+// iOS 会把 apple-touch-icon 的透明像素合成为黑色，这个 bug 真出现过
+// （主屏幕图标一圈黑框）。所以生成完就解开 PNG 验四角，别等装到手机才发现。
+// 只解到第一行和最后一行即可，但 PNG 的逐行滤波是有状态的，所以整张扫一遍。
+function cornerAlphas(file) {
+  const d = fs.readFileSync(file);
+  const w = d.readUInt32BE(16);
+  const h = d.readUInt32BE(20);
+  if (d[25] !== 6) return null; // 不是 RGBA，没有 alpha，天然不透明
+  let idat = [];
+  let i = 8;
+  while (i < d.length) {
+    const len = d.readUInt32BE(i);
+    const type = d.toString('ascii', i + 4, i + 8);
+    if (type === 'IDAT') idat.push(d.subarray(i + 8, i + 8 + len));
+    i += 12 + len;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const bpp = 4;
+  const stride = w * bpp;
+  let prev = Buffer.alloc(stride);
+  let pos = 0;
+  const alphas = [];
+  for (let y = 0; y < h; y++) {
+    const ft = raw[pos++];
+    const line = Buffer.from(raw.subarray(pos, pos + stride));
+    pos += stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? line[x - bpp] : 0;
+      const b = prev[x];
+      const c = x >= bpp ? prev[x - bpp] : 0;
+      if (ft === 1) line[x] = (line[x] + a) & 255;
+      else if (ft === 2) line[x] = (line[x] + b) & 255;
+      else if (ft === 3) line[x] = (line[x] + ((a + b) >> 1)) & 255;
+      else if (ft === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        line[x] = (line[x] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255;
+      }
+    }
+    if (y === 0 || y === h - 1) {
+      alphas.push(line[3], line[(w - 1) * bpp + 3]);
+    }
+    prev = line;
+  }
+  return alphas;
+}
+
+let allOpaque = true;
+for (const t of TARGETS) {
+  const file = path.join(outDir, t.file);
+  const a = cornerAlphas(file);
+  if (a && a.some((v) => v < 255)) {
+    allOpaque = false;
+    console.log(`  ✗ ${t.file} 四角 alpha=${a.join(',')} —— iOS 会渲染成黑框！`);
+  }
+}
+
+console.log(`\n图标已更新（${GLYPH}）。四角不透明自检：${allOpaque ? '通过 ✓' : '失败 ✗'}`);
+console.log('提醒：改 App 名或背景色时，这几处要一起改 ——');
+console.log('  1. 本脚本顶部的 GLYPH');
+console.log('  2. web/manifest.json 的 name / short_name / 两个颜色');
+console.log('  3. scripts/inject-fonts.js 的 apple-mobile-web-app-title 和 theme-color');
+if (!allOpaque) process.exit(1);

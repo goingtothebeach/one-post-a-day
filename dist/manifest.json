@@ -1,6 +1,6 @@
 {
-  "name": "One Post A Day 每日一帖",
-  "short_name": "每日一帖",
+  "name": "聚光灯",
+  "short_name": "聚光灯",
   "description": "每晚 18:00 抽签，中签者获得当日唯一的发表权",
   "start_url": "/",
   "scope": "/",

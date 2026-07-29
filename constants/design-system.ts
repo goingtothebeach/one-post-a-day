@@ -186,7 +186,7 @@ const typography = {
     tight: -0.35,
     normal: 0,
     wide: 1.2,
-    /** 刊头 "ONE POST A DAY" 这种全大写小字 */
+    /** 刊头 "SPOTLIGHT" 这种全大写小字 */
     masthead: 4,
   },
 
@@ -305,7 +305,7 @@ export const DS = {
 
 /** 常用文本样式预设，避免每个页面重复拼 fontFamily/size/weight。 */
 export const text = {
-  /** 刊头小字 "ONE POST A DAY" */
+  /** 刊头小字 "SPOTLIGHT" */
   masthead: {
     fontFamily: fontFamily.rounded,
     fontSize: typography.size.micro,

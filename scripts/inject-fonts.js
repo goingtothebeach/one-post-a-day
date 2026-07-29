@@ -57,6 +57,9 @@ if (fs.existsSync(rootIconSrc)) {
 }
 
 /* ---------- 2. 注入 PWA / iOS 标签 ---------- */
+/** App 名。改名时这里和 web/manifest.json、scripts/make-icons.js 的 GLYPH 要一起改。 */
+const APP_NAME = '聚光灯';
+
 // theme-color 必须跟设计系统的页面背景色一致，否则 iOS 加主屏幕后
 // 状态栏那条会露出另一个颜色的带子。这里取 DS.gradient.page 的第一段
 // （右上角洒光的起点，也就是页面最顶部的颜色）。
@@ -69,7 +72,7 @@ const PWA_TAGS = [
   '<meta name="theme-color" content="#FFF6F1"/>',
   '<meta name="apple-mobile-web-app-capable" content="yes"/>',
   '<meta name="apple-mobile-web-app-status-bar-style" content="default"/>',
-  '<meta name="apple-mobile-web-app-title" content="每日一帖"/>',
+  `<meta name="apple-mobile-web-app-title" content="${APP_NAME}"/>`,
   '<meta name="mobile-web-app-capable" content="yes"/>',
   '<link rel="apple-touch-icon" sizes="180x180" href="/assets/images/pwa-180.png"/>',
   '<link rel="icon" type="image/png" sizes="192x192" href="/assets/images/pwa-192.png"/>',
@@ -79,6 +82,7 @@ const PWA_TAGS = [
 const htmlFiles = getAllHtmlFiles(distDir);
 let hydrationPatched = 0;
 let pwaPatched = 0;
+let titlePatched = 0;
 
 for (const filePath of htmlFiles) {
   let html = fs.readFileSync(filePath, 'utf8');
@@ -91,6 +95,17 @@ for (const filePath of htmlFiles) {
     );
     hydrationPatched++;
   }
+
+  // expo-router 输出的是空 <title data-rh="true"></title>（标题本来交给
+  // 各路由的 <Stack.Screen options={{title}}> 去设，但我们全站 headerShown:false，
+  // 所以谁都没设过）。空标题会让浏览器标签页和收藏夹显示成 URL，分享链接也没名字。
+  html = html.replace(
+    /<title([^>]*)><\/title>/,
+    (m, attrs) => {
+      titlePatched++;
+      return `<title${attrs}>${APP_NAME}</title>`;
+    }
+  );
 
   // 幂等：已经注入过就不再重复（重复的 manifest link 会让部分浏览器告警）
   if (!html.includes('rel="manifest"')) {
@@ -105,5 +120,6 @@ for (const filePath of htmlFiles) {
 
 console.log(
   `Patched ${htmlFiles.length} HTML files: ` +
-    `hydration off (${hydrationPatched}), PWA tags (${pwaPatched}), icons copied (${copiedIcons})`
+    `hydration off (${hydrationPatched}), PWA tags (${pwaPatched}), ` +
+    `title (${titlePatched}), icons copied (${copiedIcons})`
 );

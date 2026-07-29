@@ -37,7 +37,7 @@ function shortDate(d: Date): string {
  * 新语言改成居中柔光标题——居中让页面更像「内容展示」而不是「文档」。
  */
 export function Masthead({
-  title = 'ONE POST A DAY',
+  title = 'SPOTLIGHT',
   subtitle,
   /** 大标题。不传则用日期，保持与上一版「日期即标题」的行为一致 */
   heading,

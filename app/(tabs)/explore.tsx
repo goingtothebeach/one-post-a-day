@@ -308,7 +308,7 @@ export default function ExploreScreen() {
               <View style={styles.winnerRow}>
                 <Avatar uri={status?.winner?.avatar} name={status?.winner?.name} size={58} />
                 <View style={styles.winnerCol}>
-                  <Text style={T.label}>{hasWon ? '本期执笔者 · 你' : '本期执笔者'}</Text>
+                  <Text style={T.label}>{hasWon ? '今日聚光灯 · 你' : '今日聚光灯'}</Text>
                   <Text style={styles.winnerName} numberOfLines={1}>
                     {status?.winner?.name || `用户 #${lot?.winner_user_id}`}
                   </Text>
@@ -347,7 +347,7 @@ export default function ExploreScreen() {
                   ) : (
                     // 已经发过了就不要再放一个点进去没用的按钮
                     <Text style={[T.meta, { marginTop: spacing[3] }]}>
-                      你已完成本期发表，感谢执笔。
+                      你已完成今天的发表。
                     </Text>
                   )}
                 </>

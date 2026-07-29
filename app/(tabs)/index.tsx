@@ -383,7 +383,7 @@ export default function HomeScreen() {
     return (
       <View style={[styles.screen, styles.center]}>
         <PageGradient />
-        <Text style={T.dateline}>正在取回今日刊物…</Text>
+        <Text style={T.dateline}>正在打开聚光灯…</Text>
       </View>
     );
   }
@@ -403,8 +403,8 @@ export default function HomeScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.loginInner}>
-            <Text style={[T.masthead, { textAlign: 'center' }]}>ONE POST A DAY</Text>
-            <Text style={styles.loginLede}>每日仅一人执笔</Text>
+            <Text style={[T.masthead, { textAlign: 'center' }]}>SPOTLIGHT</Text>
+            <Text style={styles.loginLede}>聚光灯</Text>
             <Text style={[T.meta, styles.loginSub]}>
               每晚 18:00 抽签，中签者获得当日唯一的发表权
             </Text>
@@ -671,7 +671,7 @@ export default function HomeScreen() {
   const composer = canPostToday ? (
     <GlassCard style={styles.composer}>
       <Seal label="今日唯一" />
-      <Text style={[T.title, { marginTop: spacing[3] }]}>今日由你执笔</Text>
+      <Text style={[T.title, { marginTop: spacing[3] }]}>今天聚光灯在你身上</Text>
 
       <View style={styles.infoRow}>
         <Text style={styles.infoLabel}>距离截止</Text>
@@ -787,9 +787,9 @@ export default function HomeScreen() {
                 end={gradient.diagonal.end}
                 style={styles.emptyOrb}
               />
-              <Text style={[T.title, { textAlign: 'center' }]}>今日还没有人执笔</Text>
+              <Text style={[T.title, { textAlign: 'center' }]}>聚光灯还没亮起</Text>
               <Text style={[T.caption, { textAlign: 'center', marginTop: spacing[2] }]}>
-                每晚十八时抽签，中签者可发表当日唯一一篇
+                每晚 18:00 抽签，中签者获得当日唯一的发表权
               </Text>
             </GlassCard>
           ) : null
