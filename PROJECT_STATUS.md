@@ -74,6 +74,21 @@ cd server && uvicorn main:app --reload --port 4000
 - `dist/` 需要 `git add -f` 强制追踪
 - Vercel 通过 `vercel.json` 按路由 serve 对应 HTML（`/profile` → `profile.html`，`/explore` → `explore.html`，其他 → `index.html`）
 
+### PWA（添加到主屏幕）
+- `web/manifest.json` + `scripts/inject-fonts.js` 注入 iOS/PWA 标签
+- `display: standalone` → 加到主屏幕后无 Safari 地址栏，全屏运行
+- **`vercel.json` 必须显式声明 `/manifest.json` 路由** —— 否则最后那条
+  catch-all 会把它重写成 `index.html`，浏览器拿不到 manifest
+- `apple-mobile-web-app-status-bar-style` 用 `default` 而非 `black-translucent`：
+  后者会让内容顶到状态栏下面，与 `use-app-insets` 的顶部留白冲突
+- 图标是朱红印章「日」+ 暖白纸底（与 `Seal` 组件同一套语言）。
+  重做原因：原来是 Expo 默认模板图标（蓝色 λ + 参考线），
+  而这正是用户加到主屏幕后看到的东西
+- 生成脚本见 git 历史；maskable 版本缩小占比留安全区，避免 Android 裁掉边框
+- 用途：10 人以内小范围测试不必买 Apple 开发者账号（$99/年）。
+  免费 Apple 账号**无法分发给任何人**——只能物理连着 Mac 装、7 天过期、
+  无 TestFlight、无 ad-hoc。PWA 发个网址即可。
+
 ### Tab 布局
 - 始终渲染 3 个 tab（home/explore/profile），不根据登录状态隐藏，避免 hydration 时 tab index 错位
 - 未登录访问 `/explore` 或 `/profile`：页面内部用 `useEffect + router.replace('/')` 重定向
