@@ -4,7 +4,7 @@
 **项目状态**: 前后端均已上线，持续迭代中  
 **GitHub**: https://github.com/goingtothebeach/one-post-a-day.git  
 **前端地址**: https://onedayapost.fun  
-**后端地址**: https://api.onedayapost.fun（待部署；Railway 旧部署已删除）
+**后端地址**: https://api.onedayapost.fun（阿里云香港 47.243.211.168，已上线）
 
 ---
 
@@ -94,7 +94,8 @@ cd server && uvicorn main:app --reload --port 4000
 
 ### 时区
 - 所有时间判断必须用 `app/timewin.py` 里的 `now_shanghai()`（基于 `zoneinfo.ZoneInfo('Asia/Shanghai')`，并 `.replace(tzinfo=None)`）
-- Railway 服务器是 UTC，直接用 `datetime.now()` 会导致 18:00 判断错误
+- 服务器时区已设为 Asia/Shanghai，但代码仍必须用 `now_shanghai()`——
+  换机器/换云厂商时时区可能又是 UTC，直接用 `datetime.now()` 会让 18:00 判断错位
 - `tzdata` 包已加入 `requirements.txt`，确保容器有时区数据
 
 ### 抽签时效逻辑
@@ -141,7 +142,7 @@ cd server && uvicorn main:app --reload --port 4000
   被启动，与 cron 同时在 18:00 抽签 → 两次抽出不同赢家、后一次覆写。多实例还会各跑一次。
 
 ### 数据库迁移
-- 使用 Alembic，Railway 启动时自动执行
+- 使用 Alembic，systemd 启动 uvicorn 时自动执行
 - 当前版本链：`741c3de4a7ff`（add likes favorites）→ `a1b2c3d4e5f6`（add avatar to users）
   → `b7e2f4c81a03`（tickets/posts 唯一约束）
 - `main.py` 启动逻辑：检查 `alembic_version` 是否存在，不存在先 `stamp 741c3de4a7ff` 再 `upgrade head`
@@ -211,9 +212,7 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 
 | 事项 | 状态 | 说明 |
 |------|------|------|
-| 开通「融合认证」 | **待做** | 短信的最后一步。RAM 权限已配好（自定义策略 `onedayapost-sms-verify`，仅授发/校验验证码），但号码认证服务未开启融合认证，接口返回 `code=UNKNOWN`。本地开发用 `DEV_FAKE_OTP=1` 不受影响 |
-| 部署后端 | **待做** | 部署资产已就绪（`deploy/`），不绑定特定云厂商，见下方步骤 |
-| 删掉主账号 AK/SK | 建议 | 排查期间用主账号密钥调过 RAM/OSS API。现已改用子用户 `odau-customer-user`（最小权限），主账号密钥可以删了 |
+| 删掉主账号 AK/SK | **建议** | 排查阿里云配置时用主账号密钥调过 RAM/OSS/PNVS API。现已全部改用子用户 `odau-customer-user`（最小权限），主账号密钥可以删了 |
 | 图片缓存 | 待做 | expo-image 加 `cachePolicy="memory-disk"` |
 | sessions 表只写不读 | 待做 | `auth.py` 写入 session 但从不校验，logout 无法吊销 token（`deps.py` 只验 JWT 签名）。要支持强制下线需改成查库 |
 | OTP 存内存 | 待做 | `OTP_STORE`/`RATE_LIMIT` 是进程内 dict，重启即失效、多 worker 不共享（限流可被绕过）。多实例需换 Redis |
@@ -231,6 +230,21 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 
 **架构**：前端 Vercel（onedayapost.fun）→ 后端 ECS（api.onedayapost.fun）→ 本机 MySQL + 阿里云 OSS。
 ⚠️ 与旧方案不同：**nginx 只反代 API，不再 serve 前端**（前端由 Vercel 托管）。
+
+### 当前部署（2026-07-29 已上线）
+
+| 项 | 值 |
+|----|-----|
+| 服务器 | 阿里云轻量香港 `47.243.211.168`，Ubuntu 22.04，2vCPU / 1.6G |
+| 登录用户 | `admin`（免密 sudo），SSH 密钥认证 |
+| 代码目录 | `/opt/onedayapost`（www-data 所有） |
+| 环境变量 | `/etc/onedayapost.env`（权限 600，**不在代码目录、不进 git**） |
+| 服务 | `systemctl {status,restart} onedayapost-api`，日志 `journalctl -u onedayapost-api -f` |
+| 证书 | Let's Encrypt，至 2026-10-26，certbot 自动续期 |
+| 小内存调优 | 2G swapfile（swappiness=10）+ `/etc/mysql/mysql.conf.d/zz-small-memory.cnf`（缓冲池 64M） |
+
+**更新后端代码**：`./deploy/push-code.sh`（rsync + 自动重启 + 验 /health）
+**排查阿里云配置**：`ssh admin@47.243.211.168 'cd /opt/onedayapost/server && sudo /opt/onedayapost/venv/bin/python scripts/check_aliyun.py /etc/onedayapost.env'`
 
 ### 部署资产
 | 文件 | 用途 |
@@ -253,6 +267,35 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 8. GitHub Actions Secrets 配 `API_BASE_URL=https://api.onedayapost.fun` 和 `CRON_SECRET`
    （与 `/etc/onedayapost.env` 里的值一致，否则抽签 503）
 9. 前端 `app/config/api.ts` 已指向 `api.onedayapost.fun`，重新构建并 push
+
+### 部署时踩过的坑（重建服务器时会再遇到）
+
+| 坑 | 现象 | 处理 |
+|----|------|------|
+| 默认用户不是 root | 轻量服务器默认用户是 `admin`（ubuntu 机型可能是 `ubuntu`），脚本原来的 `[[ $EUID -eq 0 ]] \|\| exit 1` 直接退出 | 脚本已改为非 root 时自动 `exec sudo` 重跑 |
+| `mkswap -q` | Ubuntu 22.04 的 util-linux 不支持 `-q`，建 swap 那步报错中断 | 改用输出重定向静音 |
+| `http2 on;` | 那是 nginx 1.25+ 的独立指令，Ubuntu 22.04 自带 1.18，遇到会报 unknown directive 并**拒绝启动** | 改回 `listen 443 ssl http2;` |
+| certbot 造成重定向死循环 | 证书未签发时配置里只有 HTTP 段，`certbot --nginx` 把 443 监听插进了那个「无条件 301 跳 HTTPS」的 server 块，于是 HTTPS 也被 301 到 HTTPS | 签发证书后重新装回仓库里的完整配置 |
+| systemd 段放错 | `StartLimitIntervalSec` / `StartLimitBurst` 属于 `[Unit]` 段，写在 `[Service]` 会被忽略并打 "Unknown key name" | 已移到 `[Unit]` |
+| `$USER` 变量冲突 | `push-code.sh` 里 `${USER:-admin}` 拿到的是**本机登录用户名**（`USER` 是 shell 内置变量），SSH 用错账号 | 改用 `SSH_USER` |
+
+### 短信 UNKNOWN 的教训（重要）
+
+`SendSmsVerifyCode` 对**无法送达的号码**一律返回 `code=UNKNOWN / message=UNKNOWN`，
+不给任何细节。用非法号码（`00000000000`）或未分配号段（`13000000000`）测试时，
+**无论配置对错都是 UNKNOWN**。
+
+曾据此误判为「融合认证未开通」、「签名与模板不配套」、「账号下 0 个签名」，
+实际配置从头到尾都是好的——换真实手机号一测就 `code=OK`。
+
+两个容易误导的点：
+- `QuerySmsSignList`（短信服务接口）返回 0 个签名是**正常的**：
+  赠送签名不属于自建签名，不在该接口返回范围内
+- 控制台「赠送签名配置」里审核状态「通过」的签名可以直接用，
+  搭配赠送模板 `100001`（变量 `code` + `min`）
+
+**所以：短信配置是否可用，只能用真实手机号验证。**
+`scripts/check_aliyun.py` 已改为只做静态检查并给出验证命令，不再据此判红。
 
 ### 数据库是空的
 Railway 数据库已随应用删除，**没有历史数据要迁移**。这反而省掉两件麻烦事：
