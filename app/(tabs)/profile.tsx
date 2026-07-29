@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import dayjs from 'dayjs';
@@ -9,13 +9,14 @@ import Heart from 'lucide-react-native/dist/esm/icons/heart.js';
 import LogOut from 'lucide-react-native/dist/esm/icons/log-out.js';
 import Settings from 'lucide-react-native/dist/esm/icons/settings.js';
 import SquarePen from 'lucide-react-native/dist/esm/icons/square-pen.js';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
   Image,
   Modal,
   Platform,
+  RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
@@ -76,6 +77,7 @@ export default function ProfileScreen() {
   const [editNameVisible, setEditNameVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const headers = useMemo<Record<string, string>>(
     () =>
@@ -85,7 +87,7 @@ export default function ProfileScreen() {
     [token]
   );
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/profile/tickets`, { headers });
@@ -93,9 +95,9 @@ export default function ProfileScreen() {
       const d = await res.json();
       setTickets(d.tickets || []);
     } catch {}
-  };
+  }, [token, headers]);
 
-  const loadContent = async () => {
+  const loadContent = useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/profile/content`, { headers });
@@ -103,12 +105,31 @@ export default function ProfileScreen() {
       const d = await res.json();
       setData({ likes: d.likes || [], favorites: d.favorites || [] });
     } catch {}
-  };
+  }, [token, headers]);
 
-  useEffect(() => {
-    loadHistory();
-    loadContent();
-  }, [token]);
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadHistory(), loadContent()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadHistory, loadContent]);
+
+  /**
+   * 每次进入这一屏都重新拉一次，而不是只在挂载时拉。
+   *
+   * 底部切 tab 不会卸载这个组件，所以原来的 useEffect(..., [token]) 只在首次进入时跑过一次：
+   * 在「今日」页点了赞再切回来，「赞过」列表还是首次进入时的空快照 —— 用户实际撞到过这个 bug。
+   * 这一屏的数据（赞过/收藏/报名记录）全部会被别的屏幕上的操作改变，所以必须进屏就取权威数据，
+   * 不要在本地手动同步状态（这个项目有过「各屏各自维护状态导致两个 tab 结论矛盾」的教训）。
+   */
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+      loadContent();
+    }, [loadHistory, loadContent])
+  );
 
   // 后端已下发 won 字段；兼容旧响应时回退到本地比较
   const wonCount = tickets.filter((t) => t.won ?? t.winner_user_id === user?.id).length;
@@ -221,6 +242,17 @@ export default function ProfileScreen() {
         data={listData}
         keyExtractor={(i) => `${activeTab}-${i.id}`}
         renderItem={renderItem}
+        // 下拉刷新：这一屏的数据会被别的屏幕上的操作改变（点赞、报名、改昵称），
+        // 除了进屏自动拉一次，也要让用户能主动重拉 —— 之前这里没有下拉刷新，
+        // 用户下拉时毫无反应，会以为是卡住了。
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshAll}
+            tintColor={colors.seal.base}
+            colors={[colors.seal.base]}
+          />
+        }
         // 卡片之间用留白分层，不再用细线
         ItemSeparatorComponent={() => <View style={{ height: spacing[3] }} />}
         contentContainerStyle={[
