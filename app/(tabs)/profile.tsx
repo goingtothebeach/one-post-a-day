@@ -11,7 +11,6 @@ import Settings from 'lucide-react-native/dist/esm/icons/settings.js';
 import SquarePen from 'lucide-react-native/dist/esm/icons/square-pen.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -78,6 +77,7 @@ export default function ProfileScreen() {
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const headers = useMemo<Record<string, string>>(
     () =>
@@ -87,25 +87,57 @@ export default function ProfileScreen() {
     [token]
   );
 
+  /**
+   * token 过期（401）时统一走这里：清掉本地登录态并回登录页。
+   *
+   * 之前这两个 loader 是 `if (!res.ok) return` + `catch {}`，把 401 一起吞了，
+   * 结果 token 过期时「赞过 / 收藏」渲染成空列表 —— 和「你还没赞过任何东西」
+   * 长得一模一样，用户会以为数据丢了。行为要和 index.tsx / explore.tsx 一致。
+   * 返回 true 表示已处理（调用方应当直接 return）。
+   */
+  const handleUnauthorized = useCallback(
+    async (res: Response) => {
+      if (res.status !== 401) return false;
+      await logout();
+      router.replace('/');
+      return true;
+    },
+    [logout]
+  );
+
   const loadHistory = useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/profile/tickets`, { headers });
-      if (!res.ok) return;
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        setLoadError('报名记录加载失败，下拉重试');
+        return;
+      }
       const d = await res.json();
       setTickets(d.tickets || []);
-    } catch {}
-  }, [token, headers]);
+      setLoadError('');
+    } catch {
+      setLoadError('网络错误，下拉重试');
+    }
+  }, [token, headers, handleUnauthorized]);
 
   const loadContent = useCallback(async () => {
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/profile/content`, { headers });
-      if (!res.ok) return;
+      if (await handleUnauthorized(res)) return;
+      if (!res.ok) {
+        setLoadError('内容加载失败，下拉重试');
+        return;
+      }
       const d = await res.json();
       setData({ likes: d.likes || [], favorites: d.favorites || [] });
-    } catch {}
-  }, [token, headers]);
+      setLoadError('');
+    } catch {
+      setLoadError('网络错误，下拉重试');
+    }
+  }, [token, headers, handleUnauthorized]);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -139,21 +171,24 @@ export default function ProfileScreen() {
   const updateProfile = async (payload: { name?: string; avatar?: string }) => {
     if (!token) return;
     setSaving(true);
+    setLoadError('');
     try {
       const res = await fetch(`${API_BASE}/profile`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
       });
+      if (await handleUnauthorized(res)) return;
       if (res.ok) {
         const d = await res.json();
         setAuth(token, d.user);
       } else {
         const d = await res.json().catch(() => ({}));
-        Alert.alert('保存失败', d.detail || '请稍后重试');
+        // 不用 Alert.alert：它在 react-native-web 上是空实现，web 端等于没提示
+        setLoadError(`保存失败：${typeof d.detail === 'string' ? d.detail : '请稍后重试'}`);
       }
     } catch {
-      Alert.alert('保存失败', '网络错误');
+      setLoadError('保存失败：网络错误');
     } finally {
       setSaving(false);
     }
@@ -179,7 +214,8 @@ export default function ProfileScreen() {
       await updateProfile({ avatar: url });
       setSettingsVisible(false);
     } catch {
-      Alert.alert('上传失败', '请稍后重试');
+      // 同上：Alert 在 web 上不弹，头像上传失败必须让用户看得见
+      setLoadError('头像上传失败，请稍后重试');
     }
   };
 
@@ -356,8 +392,20 @@ export default function ProfileScreen() {
               end={gradient.diagonal.end}
               style={styles.emptyDot}
             />
-            <Text style={[T.meta, { marginTop: spacing[4] }]}>
-              {activeTab === 'likes' ? '还没有赞过的文章' : '还没有收藏的文章'}
+            {/* 加载失败时绝不能说「还没有赞过」——那和真的空列表长得一样，
+                用户会以为自己的数据丢了。必须把失败本身说出来。 */}
+            <Text
+              style={[
+                T.meta,
+                { marginTop: spacing[4], textAlign: 'center' },
+                loadError && { color: colors.state.error },
+              ]}
+            >
+              {loadError
+                ? loadError
+                : activeTab === 'likes'
+                  ? '还没有赞过的文章'
+                  : '还没有收藏的文章'}
             </Text>
           </GlassCard>
         }
