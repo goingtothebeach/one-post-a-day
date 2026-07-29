@@ -1,7 +1,10 @@
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import dayjs from 'dayjs';
-import { Bookmark, Heart, Settings } from 'lucide-react-native';
+// 按需导入：Metro 不做 tree-shaking，整包导入会把 1695 个图标全打进 bundle
+import Bookmark from 'lucide-react-native/dist/esm/icons/bookmark.js';
+import Heart from 'lucide-react-native/dist/esm/icons/heart.js';
+import Settings from 'lucide-react-native/dist/esm/icons/settings.js';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,

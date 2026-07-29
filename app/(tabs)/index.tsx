@@ -1,4 +1,9 @@
-import { Bookmark, Heart, ImagePlus, MoreHorizontal } from 'lucide-react-native';
+// 按需导入：Metro 不做 tree-shaking，整包导入会把 1695 个图标全打进 bundle
+import Bookmark from 'lucide-react-native/dist/esm/icons/bookmark.js';
+import Heart from 'lucide-react-native/dist/esm/icons/heart.js';
+import ImagePlus from 'lucide-react-native/dist/esm/icons/image-plus.js';
+// MoreHorizontal 在 v1 里的真实文件名是 ellipsis
+import MoreHorizontal from 'lucide-react-native/dist/esm/icons/ellipsis.js';
 import dayjs from 'dayjs';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';

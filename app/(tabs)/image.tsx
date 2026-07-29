@@ -2,7 +2,7 @@ import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View, Dimensions, Platform, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X } from 'lucide-react-native';
+import X from 'lucide-react-native/dist/esm/icons/x.js';
 
 export default function ImageViewer() {
   const { uri } = useLocalSearchParams<{ uri: string }>();

@@ -3,29 +3,31 @@
   "buildCommand": "",
   "outputDirectory": "dist",
   "routes": [
-    { "src": "/_expo/(.*)", "dest": "/_expo/$1" },
-    { "src": "/assets/(.*)", "dest": "/assets/$1" },
+    {
+      "src": "/_expo/static/(.*)",
+      "dest": "/_expo/static/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
     { "src": "/MaterialIcons\\.ttf", "dest": "/MaterialIcons.ttf" },
     { "src": "/favicon\\.ico", "dest": "/favicon.ico" },
-    { "src": "/manifest\\.json", "dest": "/manifest.json" },
+    {
+      "src": "/manifest\\.json",
+      "dest": "/manifest.json",
+      "headers": { "Cache-Control": "public, max-age=3600" }
+    },
     { "src": "/explore", "dest": "/explore.html" },
     { "src": "/profile", "dest": "/profile.html" },
     { "src": "/modal", "dest": "/modal.html" },
     { "src": "/image", "dest": "/image.html" },
     { "src": "/(.*)", "dest": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/_expo/static/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    }
   ]
 }
