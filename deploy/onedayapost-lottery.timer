@@ -1,0 +1,32 @@
+[Unit]
+Description=每晚 18:00（北京时间）触发开奖
+Documentation=https://github.com/goingtothebeach/one-post-a-day
+
+[Timer]
+Unit=onedayapost-lottery.service
+
+# 必须带显式时区后缀。setup-ecs.sh 已把机器设成 Asia/Shanghai，裸写也能对，
+# 但机器一旦被重建 / 迁移 / 改时区就会静默偏 8 小时 —— 而开奖偏 8 小时
+# 意味着那一整轮的用户都错过了发帖窗口。
+# 带后缀的写法与机器本地时区无关，机器是 UTC 也不用改成 10:00:00。
+OnCalendar=*-*-* 18:00:00 Asia/Shanghai
+
+# 默认 AccuracySec 是 1min：触发点会落在 18:00:00–18:00:59 之间某个固定但随机的秒。
+# 前端倒计时是走到 18:00:00 的，这个偏差用户看得见，所以收紧到 1s。
+AccuracySec=1s
+
+# 与 AccuracySec 目的相反（那是允许合并唤醒），这里明确不要额外抖动
+RandomizedDelaySec=0
+
+# 机器在 18:00 时宕机 / 重启的话，开机后补跑一次。安全性来自两点：
+#   1) 该轮已有赢家 → app/lottery.py:draw_round 的 `if lottery and lottery.winner_user_id`
+#      直接早退，连 random.choice 都不执行，不会覆写；
+#   2) 轮次走 app/timewin.py:draw_date_for_run()，补跑时开的是被漏掉的那轮，不会跳轮。
+#
+# 注意：首次 enable 时【不会】补跑。systemd 在 stamp 文件不存在时只创建 stamp、
+# 把 last_trigger 视为 0，然后只排下一次 —— 所以装完当天若已过 18:00，
+# 必须手动 `systemctl start onedayapost-lottery.service` 才能把当轮开出来。
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -2,8 +2,18 @@ name: Daily Lottery
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # UTC 10:00 = 北京时间 18:00
-  workflow_dispatch:       # 支持手动触发（用于测试）
+    # UTC 10:30 = 北京时间 18:30。
+    #
+    # 这里**不再是主触发源**：GitHub 的 scheduled workflow 是 best-effort，
+    # 实测连续三晚迟到（07-29 迟了近 6 小时，07-30 迟了 3 小时以上），
+    # 而「每晚 18:00 准时开奖」是这个产品的核心体验。
+    # 主触发源改成服务器上的 onedayapost-lottery.timer（18:00:00，秒级准时）。
+    #
+    # 保留这条是作为**机外兜底**：服务器宕机、timer 被误 disable、
+    # 或整机迁移忘了装 unit 时，仍然有人把奖开出来。
+    # 错开 30 分钟也让两个触发源天然串行，不会同秒并发。
+    - cron: '30 10 * * *'
+  workflow_dispatch:       # 支持手动触发（用于测试和补开）
 
 jobs:
   run-lottery:

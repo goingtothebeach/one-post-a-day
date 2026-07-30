@@ -167,10 +167,23 @@ fi
 say "7/8 systemd 服务"
 install -m 644 "$APP_DIR/deploy/onedayapost-api.service" \
   /etc/systemd/system/onedayapost-api.service
+
+# 开奖的主触发源是本机 systemd timer（18:00:00 Asia/Shanghai）。
+# GitHub Actions 只作 18:30 机外兜底 —— 它的准点性不可靠（实测迟到过 6 小时）。
+# 不装这段的话，重建机器会静默退回「只依赖 GitHub」的状态，
+# 而那个状态下每晚都要人工补开奖。
+install -m 644 "$APP_DIR/deploy/onedayapost-lottery.service" \
+  /etc/systemd/system/onedayapost-lottery.service
+install -m 644 "$APP_DIR/deploy/onedayapost-lottery.timer" \
+  /etc/systemd/system/onedayapost-lottery.timer
+chmod 755 "$APP_DIR/deploy/run-lottery.sh"
+
 chown -R www-data:www-data "$APP_DIR"
 systemctl daemon-reload
 systemctl enable onedayapost-api >/dev/null 2>&1
-ok "onedayapost-api.service 已注册"
+# 只 enable timer；lottery.service 由 timer 拉起，不该被单独 enable
+systemctl enable onedayapost-lottery.timer >/dev/null 2>&1
+ok "onedayapost-api.service / onedayapost-lottery.timer 已注册"
 
 say "8/8 nginx"
 sed "s/api\.onedayapost\.fun/${DOMAIN}/g" "$APP_DIR/deploy/api.nginx.conf" \

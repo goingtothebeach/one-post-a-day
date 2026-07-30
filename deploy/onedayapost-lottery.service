@@ -1,0 +1,32 @@
+[Unit]
+Description=One Post A Day 每晚开奖（调 POST /lottery/run）
+Documentation=https://github.com/goingtothebeach/one-post-a-day
+# Persistent=true 的补跑发生在开机瞬间，那时 API 可能还没起来。
+# run-lottery.sh 里的 curl --retry-connrefused 也是为这一刻准备的。
+After=onedayapost-api.service
+Wants=onedayapost-api.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+
+# CRON_SECRET 只能从这里来。本 unit 文件是 644，绝不能把 secret 写进来；
+# systemd 以 root 在降权前读取 EnvironmentFile，所以该文件 600 权限不影响 www-data 运行。
+EnvironmentFile=/etc/onedayapost.env
+ExecStart=/opt/onedayapost/deploy/run-lottery.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=onedayapost-lottery
+
+# curl 最多重试 5 次 ×（10s 间隔 + 30s max-time），别让 systemd 在重试中途杀掉
+TimeoutStartSec=300
+
+# 基础加固，与 onedayapost-api.service 保持一致
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+# 故意不写 [Install]：本 service 由 .timer 拉起，不该被单独 enable。
