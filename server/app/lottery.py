@@ -74,7 +74,11 @@ def status(db: Session = Depends(get_db), user=Depends(get_current_user_optional
         # 空态文案曾经无条件显示「每晚 18:00 抽签」——18:00 之后还这么说，
         # 用户会以为 App 坏了（真实发生过：有人因此连走两遍登录流程）。
         "phase": _phase_of(lottery, already_posted),
-        "next_draw_at": to_iso_shanghai(next_draw_date()),
+        # 下一次**开奖时刻**，不是轮次标识。
+        # next_draw_date() 返回的是轮次 key（当天零点），直接下发会变成
+        # 「2026-07-31T00:00:00」——名字叫 _at 却给了个午夜，谁用都会算错。
+        # 加上 DRAW_HOUR 才是真正要开奖的那一刻。
+        "next_draw_at": to_iso_shanghai(next_draw_date() + timedelta(hours=DRAW_HOUR)),
     }
 
 
