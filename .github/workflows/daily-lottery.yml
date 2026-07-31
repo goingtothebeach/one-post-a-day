@@ -1,19 +1,24 @@
 name: Daily Lottery
 
+# 只保留手动触发。**没有 schedule，这不是定时任务。**
+#
+# 抽签的唯一定时触发源是服务器上的 onedayapost-lottery.timer
+# （18:00:00 Asia/Shanghai，实测 18:00:00 整点火、12ms 完成）。
+#
+# 为什么删掉原来的 cron：
+# 1. GitHub 的 scheduled workflow 是 best-effort，实测三晚里迟到 6 小时一次、
+#    整晚没触发一次 —— 而「每晚 18:00 准时开奖」就是这个产品本身。
+# 2. 它曾被当作「服务器宕机时的兜底」，但这个理由是错的：它打
+#    api.onedayapost.fun，DNS 解析到 47.243.211.168，就是跑 timer 的那台机器。
+#    机器宕了它一样失败，防不住单点。
+# 3. 双触发源违反项目的硬约束（抽签只能有一个触发源），也让每次排查开奖问题
+#    都要先分辨「哪个源触发的」——这个成本真实发生过。
+#
+# 保留 workflow_dispatch 是为了留一个不用 SSH 的手动补开入口：
+# timer 万一被误 disable、或哪次开奖需要人工补，点一下就行。
+# /lottery/run 幂等（已有赢家直接早退），所以手动重试永远安全。
 on:
-  schedule:
-    # UTC 10:30 = 北京时间 18:30。
-    #
-    # 这里**不再是主触发源**：GitHub 的 scheduled workflow 是 best-effort，
-    # 实测连续三晚迟到（07-29 迟了近 6 小时，07-30 迟了 3 小时以上），
-    # 而「每晚 18:00 准时开奖」是这个产品的核心体验。
-    # 主触发源改成服务器上的 onedayapost-lottery.timer（18:00:00，秒级准时）。
-    #
-    # 保留这条是作为**机外兜底**：服务器宕机、timer 被误 disable、
-    # 或整机迁移忘了装 unit 时，仍然有人把奖开出来。
-    # 错开 30 分钟也让两个触发源天然串行，不会同秒并发。
-    - cron: '30 10 * * *'
-  workflow_dispatch:       # 支持手动触发（用于测试和补开）
+  workflow_dispatch:
 
 jobs:
   run-lottery:
@@ -21,13 +26,16 @@ jobs:
     steps:
       - name: Trigger lottery
         env:
-          # 后端已从 Railway 迁到阿里云香港。优先用 API_BASE_URL，
-          # 保留 RAILWAY_API_URL 兼容旧 Secret 名，避免忘改就直接失效。
-          API_BASE_URL: ${{ secrets.API_BASE_URL || secrets.RAILWAY_API_URL }}
+          # 只认 API_BASE_URL。原来这里是
+          #   ${{ secrets.API_BASE_URL || secrets.RAILWAY_API_URL }}
+          # 那个回退是个陷阱：Railway 早已弃用，一旦 API_BASE_URL 没配好，
+          # 请求会静默打到已死的 Railway 域名，而下面的「未配置」检查
+          # 只在两个都为空时才触发 —— 等于报错报不出来。
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$API_BASE_URL" ]; then
-            echo "::error::未配置 API_BASE_URL（或 RAILWAY_API_URL）Secret"
+            echo "::error::未配置 API_BASE_URL Secret"
             exit 1
           fi
           if [ -z "$CRON_SECRET" ]; then
