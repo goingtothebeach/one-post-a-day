@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import random
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -8,6 +8,7 @@ from .database import get_db
 from .deps import get_current_user, get_current_user_optional
 from . import models
 from .timewin import (
+    DRAW_HOUR,
     current_draw_date,
     draw_date_for_run,
     next_draw_date,
@@ -40,6 +41,7 @@ def status(db: Session = Depends(get_db), user=Depends(get_current_user_optional
     winner_info = None
     is_winner = False
     can_post = False
+    already_posted = False
 
     if lottery and lottery.winner_user_id:
         deadline = post_deadline(lottery.draw_date)
@@ -65,7 +67,54 @@ def status(db: Session = Depends(get_db), user=Depends(get_current_user_optional
         "winner": winner_info,
         "is_winner": is_winner,
         "can_post": can_post,
+        # 下面两个字段专门给「首页空态该说什么」用。
+        #
+        # 为什么由后端算：前端若自己拿 draw_date 和「现在」比，就会重演
+        # 「两个 tab 结论矛盾」和「次日 00:00-18:00 掉签」那两个坑。
+        # 空态文案曾经无条件显示「每晚 18:00 抽签」——18:00 之后还这么说，
+        # 用户会以为 App 坏了（真实发生过：有人因此连走两遍登录流程）。
+        "phase": _phase_of(lottery, already_posted),
+        "next_draw_at": to_iso_shanghai(next_draw_date()),
     }
+
+
+def _phase_of(lottery, already_posted: bool) -> str:
+    """当前活跃轮次处于哪个阶段。前端照这个选文案，不要自己推断。
+
+    - waiting_draw  ：今晚的抽签还没到（这轮已经没戏了，但用户该看到的是「等今晚」）
+    - drawing       ：开奖时刻刚过、还没开出来，大概率正在跑
+    - draw_delayed  ：开奖时刻过去很久仍未开奖 —— 触发源出了问题，
+                      文案要诚实地说「延迟」而不是继续说「等 18:00」
+    - no_entries    ：开奖了但无人报名，今天不会有帖子
+    - awaiting_post ：已开奖，等中签者发布
+    - posted        ：已发布（此时首页有内容，空态不会出现）
+
+    关于「没有 lottery 行」怎么分档：
+    current_draw_date() 在 18:00 前指向**昨天**那轮，所以「无行」在一天中的任何时刻
+    都意味着某个 18:00 已经过去了 —— 不能靠「是否已过开奖时刻」来区分，那样
+    waiting_draw 永远不可达（穷举 24 小时验证过）。
+    真正该看的是**距离下一次 18:00 还有多久**：
+      刚过 18:00 十几分钟内   → 大概率正在开，说「正在抽签」
+      离下一次 18:00 还很久   → 这轮确实黄了，说「延迟」（诚实，且提示可下拉刷新）
+      快到下一次 18:00 了     → 用户关心的是今晚，说「今晚 18:00 亮灯」
+    """
+    if lottery and lottery.winner_user_id:
+        return "posted" if already_posted else "awaiting_post"
+    if lottery:
+        # 有行但没赢家 = 那次开奖跑过、发现无人报名，插了占位行
+        return "no_entries"
+
+    now = now_shanghai()
+    since_scheduled = now - (current_draw_date(now) + timedelta(hours=DRAW_HOUR))
+    until_next = (next_draw_date(now) + timedelta(hours=DRAW_HOUR)) - now
+
+    # 刚过开奖点：触发源可能正在跑（Actions 兜底也在 18:30）
+    if since_scheduled <= timedelta(minutes=35):
+        return "drawing"
+    # 今晚快到了：用户此刻关心的是今晚，而不是已经黄掉的上一轮
+    if until_next <= timedelta(hours=6):
+        return "waiting_draw"
+    return "draw_delayed"
 
 
 @router.post("/join")

@@ -93,11 +93,23 @@ function describeDetail(detail: unknown): string {
   return '未知错误';
 }
 
+/** 首页空态该说什么，完全由后端下发的 phase 决定，前端不自己推断时间态。 */
+type LotteryPhase =
+  | 'waiting_draw'
+  | 'drawing'
+  | 'draw_delayed'
+  | 'no_entries'
+  | 'awaiting_post'
+  | 'posted';
+
 type LotteryResponse = {
   lottery: LotteryStatus;
   winner_deadline?: string | null;
+  winner?: { id: number; name?: string | null; avatar?: string | null } | null;
   is_winner?: boolean;
   can_post?: boolean;
+  phase?: LotteryPhase;
+  next_draw_at?: string | null;
 };
 
 export default function HomeScreen() {
@@ -116,6 +128,8 @@ export default function HomeScreen() {
   const [activeMap, setActiveMap] = useState<Record<number, number>>({});
   const [lottery, setLottery] = useState<LotteryStatus>(null);
   const [winnerDeadline, setWinnerDeadline] = useState<string | null>(null);
+  const [phase, setPhase] = useState<LotteryPhase | null>(null);
+  const [winnerName, setWinnerName] = useState<string | null>(null);
   const [canPost, setCanPost] = useState(false);
   const [postCountdown, setPostCountdown] = useState('');
   const [publishing, setPublishing] = useState(false);
@@ -199,6 +213,8 @@ export default function HomeScreen() {
       setLottery(data?.lottery || null);
       setWinnerDeadline(data?.winner_deadline || null);
       setCanPost(Boolean(data?.can_post));
+      setPhase(data?.phase ?? null);
+      setWinnerName(data?.winner?.name ?? null);
     } catch {
       // 状态拉取失败不打断浏览，下一次 tick 会重试
     }
@@ -362,6 +378,50 @@ export default function HomeScreen() {
   // 能否发帖完全由后端 can_post 决定（它同时校验了中签、窗口未过、当轮还没人发过）。
   // 前端不要再自己算，否则两个 tab 会给出互相矛盾的结论。
   const canPostToday = canPost;
+
+  /**
+   * 首页空态文案。按后端下发的 phase 选，不自己拿时间推断。
+   *
+   * 这里最要紧的是**别在 18:00 之后还说「每晚 18:00 抽签」** ——
+   * 那句话在开奖时刻之后读起来就是「这 App 坏了」。真实发生过：
+   * 有人 18:09 看到它，以为登录状态有问题，把收码+验证走了两遍。
+   */
+  const emptyState = useMemo<{ title: string; body: string }>(() => {
+    switch (phase) {
+      case 'waiting_draw':
+        return {
+          title: '今晚 18:00 亮灯',
+          body: '抽签选出一个人，TA 的帖子会是全站当天唯一的一条',
+        };
+      case 'drawing':
+        return {
+          title: '正在抽签…',
+          body: '马上就知道今天是谁了，稍等一下或下拉刷新',
+        };
+      case 'draw_delayed':
+        return {
+          title: '抽签延迟了',
+          body: '今天的开奖比预定时间晚，正在处理。下拉可以刷新',
+        };
+      case 'no_entries':
+        return {
+          title: '今天没人报名',
+          body: '所以今天不会有帖子。去「抽签」页报名，明晚就有机会',
+        };
+      case 'awaiting_post':
+        return {
+          title: winnerName ? `今天聚光灯在 ${winnerName} 身上` : '今天的人已经选出来了',
+          body: '等 TA 发布。发布前这里是空的',
+        };
+      default:
+        // phase 还没拉到（首次加载）或旧版后端没下发这个字段时的兜底。
+        // 不提具体时刻，避免又说出一句可能与当下矛盾的话。
+        return {
+          title: '还没有内容',
+          body: '每天由抽签选出一个人发帖，下拉可以刷新',
+        };
+    }
+  }, [phase, winnerName]);
 
   useEffect(() => {
     if (!canPostToday || !winnerDeadline) {
@@ -787,9 +847,9 @@ export default function HomeScreen() {
                 end={gradient.diagonal.end}
                 style={styles.emptyOrb}
               />
-              <Text style={[T.title, { textAlign: 'center' }]}>聚光灯还没亮起</Text>
+              <Text style={[T.title, { textAlign: 'center' }]}>{emptyState.title}</Text>
               <Text style={[T.caption, { textAlign: 'center', marginTop: spacing[2] }]}>
-                每晚 18:00 抽签，中签者获得当日唯一的发表权
+                {emptyState.body}
               </Text>
             </GlassCard>
           ) : null
