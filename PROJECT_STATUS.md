@@ -24,7 +24,7 @@
 | 后端 | FastAPI + SQLAlchemy | 香港/境外 VPS（systemd + nginx 反代） |
 | 数据库 | MySQL 8.0 | 服务器本机自建 |
 | 图片存储 | 阿里云 OSS | 北京区域，bucket `onedayapost-media` |
-| 定时任务 | GitHub Actions（每天 UTC 10:00 = 北京 18:00） | GitHub |
+| 定时抽签 | systemd timer `onedayapost-lottery.timer`（每天 18:00:00 CST） | 服务器本机 |
 
 ---
 
@@ -55,7 +55,7 @@ cd server && uvicorn main:app --reload --port 4000
 | 手机号登录 | OTP 验证码，阿里云短信 |
 | Feed 流 | 卡片式，显示作者头像/昵称，支持点赞收藏 |
 | 点赞 / 收藏 | 实时更新，个人主页可查看列表 |
-| 抽签系统 | 报名、18:00 自动抽签（GitHub Actions 触发）、状态持久化 |
+| 抽签系统 | 报名、18:00 自动抽签（服务器 systemd timer 触发）、状态持久化 |
 | 发帖功能 | 文字 + 多图（最多 6 张），仅中签者可发 |
 | 发帖时效 | 中签后到次日 18:00 有效，过期自动失效 |
 | 个人主页 | 头像/昵称/ID 展示，设置入口，点赞/收藏 Tab |
@@ -124,7 +124,7 @@ cd server && uvicorn main:app --reload --port 4000
 - `next_draw_date()`：报名进入的轮次。18:00 前 → 今晚；18:00 后 → 明晚
 - `current_draw_date()`：当前活跃轮次。18:00 前 → 昨天那轮（发帖窗口仍开）；18:00 后 → 今天这轮
 - `draw_date_for_run()`：抽签任务要开的轮次 = `current_draw_date()`。
-  **关键**：GitHub Actions 经常延迟，若延迟跨过午夜，必须仍开【昨天】那轮，
+  **关键**：定时触发可能延迟，若延迟跨过午夜，必须仍开【昨天】那轮，
   而不是按「执行时刻的自然日」去抽次日的名单（那是给明晚准备的）
 - `post_deadline(draw_date)` = `draw_date + 1天18小时`（次日 18:00，下一轮抽签前）
 
@@ -149,18 +149,45 @@ cd server && uvicorn main:app --reload --port 4000
 而报名按钮进的是【下一轮】。本轮赢家当然可以报名下一轮，
 之前用 `hasWon` 一禁，赢家在自己的发帖窗口里就错过了次日抽签的报名。
 
-### 定时抽签（GitHub Actions）
-- 文件：`.github/workflows/daily-lottery.yml`
-- Cron：`0 10 * * *`（UTC 10:00 = 北京 18:00）
-- 调用：`POST /lottery/run`，携带 `X-Cron-Secret` header 鉴权
-- **`/lottery/run` 是幂等的**：该轮已开奖就直接返回既有赢家，绝不重抽。
-  重抽会让已发帖的赢家失去发帖权、新赢家又因 `publish_date` 已存在而发不出来。
+### 定时抽签（服务器 systemd timer）
+- 文件：`deploy/onedayapost-lottery.timer` + `.service` + `deploy/run-lottery.sh`
+- `OnCalendar=*-*-* 18:00:00 Asia/Shanghai`、`AccuracySec=1s`
+- 调用：`POST http://127.0.0.1:4000/lottery/run`（走本机回环，不依赖 DNS/TLS/公网出网），
+  携带 `X-Cron-Secret` header 鉴权
+- 实测连续三晚 **18:00:00 整**点火、10–14ms 完成（`journalctl -u onedayapost-lottery`）
+
+**为什么不用 GitHub Actions 定时**（2026-08-03 已删掉它的 `schedule`）：
+scheduled workflow 是 best-effort，实测 07-29 迟到近 6 小时、07-30 整晚没触发
+（那一轮**永久空缺**，当天没人能发帖）。而「每晚 18:00 准时开奖」就是这个产品本身。
+`.github/workflows/daily-lottery.yml` 现在只剩 `workflow_dispatch`，
+作用是留一个免 SSH 的**手动补开**入口。
+⚠️ 曾以为它能当「服务器宕机兜底」——**错的**：它打 `api.onedayapost.fun`，
+DNS 解析到 `47.243.211.168`，就是跑 timer 的同一台机器，防不住单点。
+
+**timer 的三个坑**（都实测过）：
+1. `OnCalendar` **必须带显式时区后缀**。裸写在当前机器上也对（机器时区就是 Asia/Shanghai），
+   但机器一旦重建/迁移就静默偏 8 小时 —— 那意味着整轮的人都错过发帖窗口。
+2. `Persistent=true` **首次 enable 不会补跑**：systemd 在 stamp 文件不存在时只创建 stamp、
+   把 `last_trigger` 当 0，只排下一次。所以装在 18:00 之后当天不会补开，
+   需手动 `systemctl start onedayapost-lottery.service`。
+3. **secret 不能进 `ExecStart`**：即使用 `${CRON_SECRET}` 从 EnvironmentFile 展开，
+   它也会进命令行 argv，`ps aux` / `systemctl show` 都看得见。
+   所以走 `run-lottery.sh` 用 `curl -K -` 从 stdin 喂配置（已实测 argv 里搜不到）。
+
+**幂等与并发**：
+- **`/lottery/run` 是幂等的**：判据是 `winner_user_id` **非空**（不是行存在），
+  所以无人报名的占位行（winner NULL）不会被误判成已开奖，下次触发还能正常开。
+  绝不重抽 —— 重抽会让已发帖的赢家失去发帖权、新赢家又因 `publish_date` 已存在而发不出来。
+- 并发 INSERT 由 `lotteries.draw_date` 唯一索引兜底；`IntegrityError` 分支
+  **先 rollback 再重查**（MySQL REPEATABLE READ 下不 rollback 会读到旧快照，
+  返回 `winner_user_id: null`）。
 - **`CRON_SECRET` 未配置时返回 503（fail-closed）**。曾写成 `if CRON_SECRET and ...`，
   没配环境变量时鉴权被完全跳过，任何人可裸调重抽赢家。
 - 没人报名时返回 200 + `winner_user_id: null` 并落一条 `status='empty'` 的轮次，
-  不再抛 400（否则 `curl -f --retry 3` 会把 workflow 标红，属误报警）
+  不再抛 400（否则 `curl -f --retry 3` 会把调用方标红，属误报警）
 - ⚠️ **`server/app/scheduler.py` 已废弃且不得再启用**。它曾在 `main.py` 的 lifespan 里
-  被启动，与 cron 同时在 18:00 抽签 → 两次抽出不同赢家、后一次覆写。多实例还会各跑一次。
+  被启动，与定时任务同时在 18:00 抽签 → 两次抽出不同赢家、后一次覆写。多实例还会各跑一次。
+  现在它只剩 16 行 docstring，无人 import。
 
 ### 数据库迁移
 - 使用 Alembic，systemd 启动 uvicorn 时自动执行
@@ -220,7 +247,7 @@ ALIYUN_ACCESS_KEY_SECRET=...
 ALIYUN_OSS_ROLE_ARN=...   # 注意变量名是 OSS 不是 STS，代码读的是这个
 ```
 
-### GitHub Actions Secrets
+### GitHub Actions Secrets（现仅手动补开用）
 ```
 API_BASE_URL=https://api.onedayapost.fun
 CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
@@ -293,7 +320,8 @@ CRON_SECRET=（必须与 /etc/onedayapost.env 里的一致，否则抽签 503）
 5. DNS 加 `api.onedayapost.fun` A 记录指向服务器公网 IP
 6. **解析生效后**再 `certbot --nginx -d api.onedayapost.fun`（顺序反了会签发失败）
 7. 安全组放行 80/443；**不要**放行 3306 和 4000
-8. GitHub Actions Secrets 配 `API_BASE_URL=https://api.onedayapost.fun` 和 `CRON_SECRET`
+8. （可选）GitHub Actions Secrets 配 `API_BASE_URL=https://api.onedayapost.fun` 和 `CRON_SECRET`
+   —— 只用于 workflow_dispatch 手动补开；日常抽签由服务器 systemd timer 负责
    （与 `/etc/onedayapost.env` 里的值一致，否则抽签 503）
 9. 前端 `app/config/api.ts` 已指向 `api.onedayapost.fun`，重新构建并 push
 
@@ -370,7 +398,7 @@ one-post-a-day/
 │   │   ├── post.py         # 发帖/Feed
 │   │   ├── profile.py      # 个人主页
 │   │   ├── upload.py       # OSS 上传 STS
-│   │   ├── scheduler.py    # APScheduler（已弃用，改用 GitHub Actions）
+│   │   ├── scheduler.py    # APScheduler（已弃用，改用服务器 systemd timer）
 │   │   ├── nicknames.py    # 随机昵称词库
 │   │   ├── models.py       # SQLAlchemy 模型
 │   │   └── schemas.py      # Pydantic schemas
